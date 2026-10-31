@@ -3,6 +3,7 @@ name: verify
 # 1) all tests (math, eligibility rules, end-to-end with a fake API)
 # 2) live self-check on real Polymarket data
 # Runs automatically when the code changes, and on demand (Actions tab -> verify -> Run workflow).
+# Results are also shown as annotations on the run's summary page.
 on:
   workflow_dispatch:
   push:
@@ -10,7 +11,7 @@ on:
     paths:
       - "arbscanner/**"
       - "tests/**"
-      - ".github/workflows/**"
+      - ".github/**"
 
 permissions:
   contents: read
@@ -27,7 +28,21 @@ jobs:
       - name: Tests
         run: |
           python3 --version
-          python3 -m unittest discover -s tests -t . -v
+          set +e
+          python3 -m unittest discover -s tests -t . -v > test-output.txt 2>&1
+          code=$?
+          cat test-output.txt
+          if [ "$code" -ne 0 ]; then
+            python3 .github/annotate.py error "Tests failed on $(python3 --version)" test-output.txt --failures-only
+          fi
+          exit "$code"
 
       - name: Live self-check on real Polymarket data
-        run: python3 -m arbscanner selfcheck
+        run: |
+          set +e
+          python3 -m arbscanner selfcheck > selfcheck-output.txt 2>&1
+          code=$?
+          cat selfcheck-output.txt
+          if [ "$code" -ne 0 ]; then level=error; else level=notice; fi
+          python3 .github/annotate.py "$level" "Live self-check" selfcheck-output.txt
+          exit "$code"
