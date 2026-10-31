@@ -352,6 +352,17 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(code, 1, out.getvalue())
         self.assertIn("[FAIL]", out.getvalue())
 
+    def test_selfcheck_accepts_an_outcome_that_closed_after_the_listing(self):
+        import copy
+        later = copy.deepcopy(next(e for e in self.fake.events if e["id"] == "1002"))
+        later["markets"][3].update({"closed": True, "acceptingOrders": False, "outcomePrices": '["0", "1"]'})
+        self.fake.full_events["1002"] = later        # what GET /events/1002 shows a few minutes later
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = run_selfcheck(self.client())
+        self.assertEqual(code, 0, out.getvalue())
+        self.assertIn("[PASS] Event listing contains every outcome", out.getvalue())
+
     def test_selfcheck_fails_if_an_open_candidate_has_no_book(self):
         del self.fake.books["112"]      # NO book of a market that is still open and priced
         out = io.StringIO()

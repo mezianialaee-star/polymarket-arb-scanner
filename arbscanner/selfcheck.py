@@ -26,7 +26,7 @@ from .evaluate import COMPLETE_SET_MIN_SUM, evaluate_event, parse_books
 from .httpclient import ApiError
 from .scan import run_scan, save_universe
 from .screen import build_price_table, screen_event
-from .universe import SchemaError, build_universe, classify_event
+from .universe import SchemaError, asset_ids, build_universe, market_status
 
 MARKET_FIELDS = ("outcomes", "outcomePrices", "acceptingOrders", "orderMinSize", "feesEnabled", "feeSchedule")
 
@@ -211,20 +211,22 @@ def run_selfcheck(client: PolymarketClient, max_events: int = 300, time_budget_s
     rep.check(mirror_total == 0 or mirror_eq >= 0.95 * mirror_total, "NO best ask = 1 − YES best bid, exactly (shared book)",
               f"exact {_ratio(mirror_eq, mirror_total)}, within 0.011: {_ratio(mirror_near, mirror_total)}")
 
-    # Is the listing complete? Compare the biggest events with GET /events/{id}.
+    # Is the listing complete? Every tradable outcome that GET /events/{id} shows for the
+    # biggest events must be in our list. (Outcomes that closed since are not a problem.)
     biggest = sorted(sample, key=lambda e: len(e.markets), reverse=True)[:5]
     same = 0
     for e in biggest:
         try:
-            fresh, _ = classify_event(client.get_event(e.event_id))
+            raw = client.get_event(e.event_id)
         except (ApiError, SchemaError) as exc:
             info(f"could not fetch event {e.event_id}: {str(exc)[:120]}")
             continue
-        if fresh is not None and {(m.yes_id, m.no_id) for m in fresh.markets} == {(m.yes_id, m.no_id) for m in e.markets}:
+        theirs = {asset_ids(m) for m in raw["markets"] if isinstance(m, dict) and market_status(m) == "tradable"}
+        ours = {(m.yes_id, m.no_id) for m in e.markets}
+        if None not in theirs and theirs <= ours:
             same += 1
         else:
-            info(f"event {e.event_id} '{e.title[:60]}': listing has {len(e.markets)} outcomes, "
-                 f"single fetch has {len(fresh.markets) if fresh else 'n/a'}")
+            info(f"event {e.event_id} '{e.title[:60]}': {len(theirs - ours)} tradable outcome(s) missing from the listing")
     rep.check(same == len(biggest), "Event listing contains every outcome (checked on the largest events)",
               _ratio(same, len(biggest)))
 
