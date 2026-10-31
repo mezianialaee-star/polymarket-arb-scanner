@@ -350,14 +350,24 @@ def classify_event(event: Any) -> Tuple[Optional[UniverseEvent], str]:
     )
 
 
+def event_number(raw: Any) -> int:
+    """Numeric event id (0 if absent or not a number)."""
+    try:
+        return int(str(raw.get("id")).strip()) if isinstance(raw, dict) else 0
+    except (TypeError, ValueError):
+        return 0
+
+
 def build_universe(events: Iterable[Any], now: datetime, fetch_stats: Optional[Dict[str, Any]] = None) -> Universe:
     reasons: Counter = Counter()
     eligible: List[UniverseEvent] = []
     seen_events = set()
     seen_tokens = set()
     total = 0
+    max_id = 0
     for raw in events:
         total += 1
+        max_id = max(max_id, event_number(raw))
         ev, reason = classify_event(raw)
         if ev is None:
             reasons[reason] += 1
@@ -375,6 +385,7 @@ def build_universe(events: Iterable[Any], now: datetime, fetch_stats: Optional[D
         eligible.append(ev)
     stats: Dict[str, Any] = {
         "events_fetched": total,
+        "max_event_id": max_id,          # newer events (higher ids) are picked up between refreshes
         "eligible_events": len(eligible),
         "eligible_markets": sum(len(e.markets) for e in eligible),
         "reasons": dict(sorted(reasons.items())),

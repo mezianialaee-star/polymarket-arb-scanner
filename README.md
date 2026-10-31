@@ -19,8 +19,9 @@ exchange's order rules — the profit is locked in whatever happens. It is the s
 There are about 6,000 eligible events and 65,000 outcomes, so reading every full order book every
 10 minutes would mean ~130,000 books per scan. The scan works in two stages instead:
 
-1. **List events** (Gamma API, rebuilt every hour, kept in the Actions cache) and keep only events
-   where a basket is truly riskless (see *Safety rules*).
+1. **List events** (Gamma API: ~21,500 open events, rebuilt every hour and kept in the Actions cache;
+   events created since then are added from the newest-first listing at every scan) and keep only the
+   events where a basket is truly riskless (see *Safety rules*).
 2. **Stage 1 — screen everything.** One `POST /prices` request per 250 outcomes gives the best bid and
    best ask of every YES token (~260 requests). A basket can only be profitable if the sum of its best
    asks is below its payout (fees and deeper levels only add cost), so every other event is ruled out.
@@ -79,8 +80,9 @@ All arithmetic uses exact decimals, so rounding can never create a fake profit.
   condition ids, that stage-1 prices equal the full books, that the NO book mirrors the YES book exactly,
   the completeness of event listings, and that baskets cost about their payout or more, as theory predicts.
 - **Every scan** re-checks itself: which `/prices` side is the ask is decided from the data (the best bid
-  is always below the best ask; Polymarket's docs contradict each other on this), and stage-1 prices of the
-  candidates are compared with their full books.
+  is always below the best ask), and stage-1 prices of the candidates are compared with their full books.
+  This mattered: Polymarket's guide says `BUY` returns the lowest ask, its API reference says the best bid,
+  and the live data (26,554 of 26,554 two-sided tokens) shows that `BUY` is the bid.
 
 ## Data layout
 
@@ -101,7 +103,7 @@ See [`report/report.md`](report/report.md).
 - Scans every 10 minutes: opportunities lasting seconds are missed and durations are approximate.
 - Detection is not execution: each leg is a separate order and prices can move in between
   (sports markets also delay marketable orders by a few seconds).
-- New events are picked up when the list is rebuilt (at most one hour later).
+- Events created since the last hourly rebuild are found from the newest-first listing (up to 500 per scan).
 - Polymarket rounds fees per trade (differences below $0.00001).
 
 ## Run it

@@ -135,6 +135,24 @@ class PolymarketClient:
                 stats["stopped"] = "time_budget"
                 return
 
+    def iter_newest_events(self, max_pages: int = 5) -> Iterator[Dict[str, Any]]:
+        """Open events, newest first (keyset listing ordered by id, descending).
+
+        The caller stops reading as soon as it reaches events it already knows, so
+        usually only one page is requested.
+        """
+        params: Dict[str, Any] = {"closed": False, "limit": self.page_limit, "order": "id", "ascending": False}
+        page = self.http.get_json(self.gamma_url, "/events/keyset", params)
+        for n in range(max_pages):
+            if not isinstance(page, dict) or not isinstance(page.get("events"), list):
+                raise SchemaError(f"/events/keyset (newest first) returned an unexpected shape: {type(page).__name__}")
+            for ev in page["events"]:
+                yield ev
+            cursor = page.get("next_cursor")
+            if not cursor or not page["events"] or n + 1 >= max_pages:
+                return
+            page = self.http.get_json(self.gamma_url, "/events/keyset", dict(params, after_cursor=cursor))
+
     def get_event(self, event_id: str) -> Dict[str, Any]:
         """Fetch one event with its full list of markets (GET /events/{id})."""
         resp = self.http.get_json(self.gamma_url, f"/events/{event_id}")

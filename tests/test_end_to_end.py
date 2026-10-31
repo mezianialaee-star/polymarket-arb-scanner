@@ -20,7 +20,7 @@ from arbscanner.httpclient import ApiError, HttpClient
 from arbscanner.scan import append_csv, load_universe, run_scan
 from arbscanner.selfcheck import run_selfcheck
 from arbscanner.universe import SchemaError
-from tests.fakepoly import FakePolymarket, build_world
+from tests.fakepoly import FakePolymarket, book, build_world, cond, event, market, mirror
 
 ROOT = Path(__file__).resolve().parent.parent
 T0 = datetime(2026, 11, 2, 12, 3, tzinfo=timezone.utc)
@@ -143,8 +143,10 @@ class EndToEnd(unittest.TestCase):
         n_requests = len(self.fake.requests)
         s2 = run_scan(self.client(), self.tmp, now=T0 + timedelta(minutes=10))
         later = self.fake.requests[n_requests:]
-        self.assertEqual([r for r in later if r[0] == "GET" and r[1] in ("/events/keyset", "/events")], [])
-        self.assertEqual([r[1] for r in later if r[0] == "GET"], ["/events/1001"])  # YES double check only
+        # no full listing: one "newest events" page, then the YES double check
+        self.assertEqual([(r[1], r[2].get("order")) for r in later if r[0] == "GET"],
+                         [("/events/keyset", "id"), ("/events/1001", None)])
+        self.assertEqual((s2["new_events_seen"], s2["new_events_added"]), (0, 0))
         self.assertEqual(s2["universe_refreshed"], "0")
         self.assertEqual(len(read_csv(self.tmp / "scans" / "2026-11.csv")), 2)
         self.assertEqual(len(self.opportunities()), 4)
@@ -211,6 +213,44 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(s["universe_events"], 6)
         self.assertIn("kept 3 events from the previous list", s["universe_note"])
         self.assert_known_opportunities(s)
+
+    def add_event(self, eid, legs):
+        """A new event appears on Polymarket after the list was built."""
+        markets = []
+        for mid, bid, ask in legs:
+            y, n = f"{mid}1", f"{mid}2"
+            markets.append(market(mid, f"N{mid}", y, n, str((D(bid) + D(ask)) / 2), fees=("0", 1)))
+            self.fake.books[y] = book(y, cond(mid), [(bid, "100")], [(ask, "100")])
+            self.fake.books[n] = book(n, cond(mid), mirror([(ask, "100")]), mirror([(bid, "100")]))
+        self.fake.events.append(event(eid, f"New {eid}", markets))
+
+    def test_new_event_is_scanned_before_the_next_rebuild(self):
+        run_scan(self.client(), self.tmp, now=T0)
+        self.add_event(1011, [(201, "0.40", "0.42"), (202, "0.50", "0.52")])   # YES basket at 0.94
+        s = run_scan(self.client(), self.tmp, now=T0 + timedelta(minutes=10))
+        self.assertEqual(s["universe_refreshed"], "0")
+        self.assertEqual((s["new_events_seen"], s["new_events_added"]), (1, 1))
+        self.assertEqual(s["universe_events"], 7)
+        self.assertEqual(s["opportunities_yes"], 2)
+        new = [r for r in self.opportunities() if r["event_id"] == "1011"]
+        self.assertEqual(len(new), 1)
+        self.assertEqual((D(new[0]["exec_profit"]), new[0]["verified"]), (D(6), "1"))
+        self.assertEqual(len(load_universe(self.tmp / "universe.json.gz").events), 6)   # file untouched
+        s = run_scan(self.client(), self.tmp, now=T0 + timedelta(minutes=70))         # hourly rebuild
+        self.assertEqual((s["universe_refreshed"], s["universe_events"]), ("1", 7))
+        self.assertEqual(load_universe(self.tmp / "universe.json.gz").stats["max_event_id"], 1011)
+
+    def test_new_event_check_is_harmless_when_it_cannot_work(self):
+        run_scan(self.client(), self.tmp, now=T0)
+        self.add_event(1011, [(201, "0.40", "0.42"), (202, "0.50", "0.52")])
+        self.fake.order_supported = False      # listing ignores the order: oldest first
+        s = run_scan(self.client(), self.tmp, now=T0 + timedelta(minutes=10))
+        self.assertEqual((s["status"], s["new_events_added"]), ("ok", 0))
+        self.fake.keyset_returns_list = True   # unknown format
+        s = run_scan(self.client(), self.tmp, now=T0 + timedelta(minutes=20))
+        self.assertEqual(s["status"], "ok")
+        self.assertIn("new-event check stopped", s["universe_note"])
+        self.assertEqual(s["opportunities_yes"] + s["opportunities_no"], 2)
 
     # -------------------------------------------------------------------- failures
 

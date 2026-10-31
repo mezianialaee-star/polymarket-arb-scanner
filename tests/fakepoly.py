@@ -186,6 +186,7 @@ class FakePolymarket:
         self.page_size = page_size
         self.keyset_enabled = True
         self.keyset_returns_list = False
+        self.order_supported = True       # keyset listing honours order=id&ascending=false
         self.fail_first_books = False
         self.fail_first_prices = False
         self.force_status = None          # e.g. 403 for every request
@@ -254,10 +255,13 @@ class FakePolymarket:
                     assert q.get("closed") == "false", q
                     limit = int(q.get("limit", 20))
                     assert 1 <= limit <= 100
+                    events = fake.events
+                    if q.get("order") == "id" and fake.order_supported:
+                        events = sorted(events, key=lambda e: int(e["id"]), reverse=q.get("ascending") == "false")
                     start = int(q.get("after_cursor", "0") or 0)
-                    page = fake.events[start:start + min(limit, fake.page_size)]
+                    page = events[start:start + min(limit, fake.page_size)]
                     resp = {"events": page}
-                    if start + len(page) < len(fake.events):
+                    if start + len(page) < len(events):
                         resp["next_cursor"] = str(start + len(page))
                     return self._send(200, resp)
                 if u.path.startswith("/events/") and u.path.count("/") == 2 and u.path != "/events/keyset":

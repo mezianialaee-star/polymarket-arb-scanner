@@ -142,6 +142,8 @@ def run_selfcheck(client: PolymarketClient, max_events: int = 300, time_budget_s
     if n_chk:
         info(f"stage 1 vs stage 2 (seconds apart) on candidates: ask equal {_ratio(int(s['check_ask_equal']), n_chk)}, "
              f"bid equal {_ratio(int(s['check_bid_equal']), n_chk)}, NO = 1 - YES bid {_ratio(int(s['check_mirror_equal']), n_chk)}")
+    info(f"events created during the listing, added by the newest-first check: {s.get('new_events_added', 0)} "
+         f"(of {s.get('new_events_seen', 0)} new) {s.get('universe_note', '')}".rstrip())
     info(f"opportunities: YES {s['opportunities_yes']}, NO {s['opportunities_no']}, best ${s['best_profit']}; "
          f"total requests {s['http_requests']}, duration {s['duration_s']}s")
 

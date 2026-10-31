@@ -23,7 +23,7 @@ from .basket import D0, D1, BasketResult
 from .evaluate import EventEvaluation, ParsedBook, evaluate_event, is_suspicious, parse_books
 from .httpclient import ApiError
 from .screen import DEFAULT_MARGIN, EventScreen, PriceTable, build_price_table, screen_event
-from .universe import SchemaError, Universe, UniverseEvent, build_universe, classify_event
+from .universe import SchemaError, Universe, UniverseEvent, build_universe, classify_event, event_number
 
 OPPORTUNITY_FIELDS = [
     "scan_time", "event_id", "event_slug", "event_title", "category", "n_outcomes", "eliminated",
@@ -35,7 +35,7 @@ OPPORTUNITY_FIELDS = [
 SCAN_FIELDS = [
     "scan_time", "status", "duration_s", "universe_generated_at", "universe_age_min",
     "universe_refreshed", "universe_note", "universe_events", "universe_markets", "gamma_endpoint",
-    "gamma_pages", "gamma_complete",
+    "gamma_pages", "gamma_complete", "new_events_seen", "new_events_added",
     # stage 1
     "prices_tokens", "prices_priced", "prices_uncertain", "prices_rejected", "prices_requests",
     "side_mapping", "side_votes", "stage1_s", "screened_events", "candidates_yes", "candidates_no",
@@ -160,7 +160,44 @@ def merge_with_previous(new: Universe, previous: Optional[Universe], now: dateti
         seen_tokens |= tokens
         kept += 1
     new.stats["kept_from_previous"] = kept
+    new.stats["max_event_id"] = max(int(new.stats.get("max_event_id") or 0), int(previous.stats.get("max_event_id") or 0))
     return new
+
+
+def add_new_events(client: PolymarketClient, universe: Universe, max_pages: int = 5) -> Tuple[int, int, str]:
+    """Add events created since the list was built (for this scan only), so a new event
+    is scanned within 10 minutes instead of waiting for the hourly rebuild.
+
+    Reads the listing newest first and stops at the first event the list already knew
+    of. Returns (new events seen, eligible events added, note). Never fails the scan.
+    """
+    try:
+        max_known = int(universe.stats.get("max_event_id") or 0)
+    except (TypeError, ValueError):
+        max_known = 0
+    if max_known <= 0:
+        return 0, 0, "no reference id"
+    seen_events = {e.event_id for e in universe.events}
+    seen_tokens = {t for e in universe.events for m in e.markets for t in (m.yes_id, m.no_id)}
+    newer = added = 0
+    try:
+        for raw in client.iter_newest_events(max_pages):
+            if event_number(raw) <= max_known:
+                break
+            newer += 1
+            ev, _reason = classify_event(raw)
+            if ev is None or ev.event_id in seen_events:
+                continue
+            tokens = {t for m in ev.markets for t in (m.yes_id, m.no_id)}
+            if tokens & seen_tokens:
+                continue
+            universe.events.append(ev)
+            seen_events.add(ev.event_id)
+            seen_tokens |= tokens
+            added += 1
+    except (ApiError, SchemaError) as exc:
+        return newer, added, f"new-event check stopped: {str(exc)[:120]}"
+    return newer, added, ""
 
 
 def refresh_universe(client: PolymarketClient, now: datetime, time_budget_s: float) -> Universe:
@@ -315,6 +352,7 @@ def run_scan(
     margin: Decimal = DEFAULT_MARGIN,
     write_snapshot: bool = True,
     snapshot_every_hours: int = 3,
+    discover_new: bool = True,
 ) -> Dict[str, Any]:
     """Run one scan and append its results under `data_dir`. Returns the scan summary.
 
@@ -332,6 +370,10 @@ def run_scan(
         universe, refreshed, note = ensure_universe(
             client, universe_path, now, universe_max_age_min, force_refresh, refresh_budget_s,
         )
+        if not refreshed and discover_new:
+            newer, added, discovery_note = add_new_events(client, universe)
+            summary.update({"new_events_seen": newer, "new_events_added": added})
+            note = "; ".join(x for x in (note, discovery_note) if x)
         summary.update({
             "universe_generated_at": universe.generated_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "universe_age_min": fmt(universe.age_minutes(now), 1),
