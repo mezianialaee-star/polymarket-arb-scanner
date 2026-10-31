@@ -213,7 +213,7 @@ class EndToEnd(unittest.TestCase):
         env = dict(os.environ, ARB_GAMMA_URL=self.fake.url, ARB_CLOB_URL=self.fake.url)
         pythons = [p for p in ("python3.11", "python3.12", "python3.13") if shutil.which(p)] or [sys.executable]
         for py in pythons:
-            out_dir = self.tmp / py
+            out_dir = self.tmp / Path(py).name  # py can be an absolute path (sys.executable)
             proc = subprocess.run(
                 [py, "-m", "arbscanner", "--pause", "0", "scan", "--data", str(out_dir)],
                 cwd=ROOT, env=env, capture_output=True, text=True, timeout=120,
