@@ -1,0 +1,33 @@
+name: verify
+
+# 1) all tests (math, eligibility rules, end-to-end with a fake API)
+# 2) live self-check on real Polymarket data
+# Runs automatically when the code changes, and on demand (Actions tab -> verify -> Run workflow).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - "arbscanner/**"
+      - "tests/**"
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Tests
+        run: |
+          python3 --version
+          python3 -m unittest discover -s tests -t . -v
+
+      - name: Live self-check on real Polymarket data
+        run: python3 -m arbscanner selfcheck

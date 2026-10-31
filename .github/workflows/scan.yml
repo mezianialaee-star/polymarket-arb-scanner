@@ -1,0 +1,51 @@
+name: scan
+
+# Runs one scan every 10 minutes and saves the results in the repository (data/).
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: data-writer
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Scan Polymarket (read-only)
+        run: |
+          python3 --version
+          python3 -m arbscanner scan --data data
+
+      - name: Save results
+        if: success() || failure()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then
+            echo "Nothing new to save."
+            exit 0
+          fi
+          git commit -q -m "data: scan $(date -u +%Y-%m-%dT%H:%MZ)"
+          for attempt in 1 2 3 4 5; do
+            if git push -q origin "HEAD:${GITHUB_REF_NAME}"; then
+              echo "Saved."
+              exit 0
+            fi
+            echo "Push rejected (attempt ${attempt}), rebasing on the latest version..."
+            git pull -q --rebase --autostash origin "${GITHUB_REF_NAME}"
+            sleep $((attempt * 3))
+          done
+          echo "Could not save the results."
+          exit 1
