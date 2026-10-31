@@ -1,31 +1,54 @@
 name: scan
 
-# Every 10 minutes: one scan of every multi-outcome Polymarket event. Results are saved
+# One scan of every multi-outcome Polymarket event every ~10 minutes. Results are saved
 # in the repository (data/). The list of events (a few MB, rebuilt every hour) is kept
 # in the Actions cache (state/), not in git.
+#
+# Rhythm: each run starts the next one 10 minutes after its own start. GitHub's own
+# scheduler is not reliable enough on new repositories (on 31 Oct 2026 it did not fire
+# once in 2.5 hours), so it is only a safety net that restarts the chain if it stops.
+# Stop: Actions -> scan -> "..." -> Disable workflow (or cancel the running scan).
+# Restart: Actions -> scan -> Run workflow.
 on:
   schedule:
-    # minutes 4, 14, 24, ...: GitHub delays schedules most at the top of the hour
-    - cron: "4-59/10 * * * *"
+    - cron: "17 * * * *"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: write   # save the results
+  actions: write    # start the next scan
 
 concurrency:
-  group: data-writer
+  group: scan
   cancel-in-progress: false
+
+env:
+  STOP_AFTER: "2027-01-31"   # no scan is started after this date (UTC)
+  INTERVAL_S: "600"
 
 jobs:
   scan:
     runs-on: ubuntu-latest
     env:
       PYTHONDONTWRITEBYTECODE: "1"
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
+      - name: Check the date
+        id: gate
+        run: |
+          echo "start=$(date -u +%s)" >> "$GITHUB_OUTPUT"
+          if [ "$(date -u +%Y-%m-%d)" \> "$STOP_AFTER" ]; then
+            echo "Past $STOP_AFTER: scanning has ended."
+            echo "active=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "active=1" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v6
+        if: steps.gate.outputs.active == '1'
 
       - name: Restore the list of events
+        if: steps.gate.outputs.active == '1'
         uses: actions/cache/restore@v5
         with:
           path: state
@@ -34,6 +57,7 @@ jobs:
 
       - name: Scan Polymarket (read-only)
         id: scan
+        if: steps.gate.outputs.active == '1'
         run: |
           python3 --version
           before=$(sha256sum state/universe.json.gz 2>/dev/null || echo none)
@@ -56,7 +80,7 @@ jobs:
           key: universe-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Save results
-        if: success() || failure()
+        if: (success() || failure()) && steps.gate.outputs.active == '1'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -76,4 +100,25 @@ jobs:
             sleep $((attempt * 3))
           done
           echo "Could not save the results."
+          exit 1
+
+      - name: Start the next scan
+        # not when the run is cancelled: cancelling a run is a way to stop the chain
+        if: "!cancelled() && steps.gate.outputs.active == '1'"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          wait=$(( ${{ steps.gate.outputs.start }} + INTERVAL_S - $(date -u +%s) ))
+          if [ "$wait" -gt 0 ]; then
+            echo "Next scan in ${wait}s."
+            sleep "$wait"
+          fi
+          for attempt in 1 2 3 4 5; do
+            if gh workflow run scan.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME"; then
+              echo "Next scan started."
+              exit 0
+            fi
+            sleep $((attempt * 10))
+          done
+          echo "Could not start the next scan (the hourly schedule will restart it)."
           exit 1

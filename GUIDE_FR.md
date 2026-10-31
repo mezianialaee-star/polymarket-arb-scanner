@@ -3,7 +3,11 @@
 ## 1. Où en est le projet
 
 Le code est sur GitHub et tourne tout seul : un scan toutes les 10 minutes (onglet **Actions** → `scan`),
-les résultats arrivent dans le dossier `data/`. Tu n'as rien à faire.
+les résultats arrivent dans le dossier `data/`. Tu n'as rien à faire. Chaque scan lance le suivant ;
+ça s'arrête tout seul le 31 janvier 2027.
+
+- Arrêter avant : **Actions** → **scan** → **⋯** → **Disable workflow**.
+- Relancer : **Actions** → **scan** → **Run workflow** (après **Enable workflow** si tu l'avais désactivé).
 
 ## 2. Vérifier que tout marche (quand tu veux)
 

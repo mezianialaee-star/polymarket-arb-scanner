@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: data-writer
+  group: analyze
   cancel-in-progress: false
 
 jobs:

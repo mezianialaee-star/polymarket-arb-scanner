@@ -16,6 +16,10 @@ exchange's order rules — the profit is locked in whatever happens. It is the s
 
 ## What runs every 10 minutes (GitHub Actions)
 
+Each scan run starts the next one 10 minutes after its own start (GitHub's cron scheduler did not fire
+once in 2.5 hours on this new repository, so it is only an hourly safety net). Scanning stops by itself
+after 31 January 2027.
+
 There are about 6,000 eligible events and 65,000 outcomes, so reading every full order book every
 10 minutes would mean ~130,000 books per scan. The scan works in two stages instead:
 
