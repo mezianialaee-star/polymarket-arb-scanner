@@ -352,6 +352,14 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(code, 1, out.getvalue())
         self.assertIn("[FAIL]", out.getvalue())
 
+    def test_selfcheck_fails_if_an_open_candidate_has_no_book(self):
+        del self.fake.books["112"]      # NO book of a market that is still open and priced
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = run_selfcheck(self.client())
+        self.assertEqual(code, 1, out.getvalue())
+        self.assertIn("[FAIL] Stage 2: full order books read for every candidate still open", out.getvalue())
+
     def test_selfcheck_fails_if_stage_one_prices_are_wrong(self):
         # /prices answers a stale, higher ask for every YES token: screening would miss things.
         for t, b in self.fake.books.items():

@@ -136,10 +136,13 @@ def run_selfcheck(client: PolymarketClient, max_events: int = 300, time_budget_s
          f"(YES {s['candidates_yes']}, NO {s['candidates_no']}, uncertain {s['candidates_uncertain']})")
     rep.check(int(s["candidate_events"]) <= 0.25 * int(s["screened_events"]), "Stage 1 keeps the full-book reads small",
               f"{s['candidate_events']} candidate events of {s['screened_events']}", warn_only=True)
+    # Markets that close while the list is being read (a match ends) have no book any more:
+    # stage 1 already flags them, so only those events may lack a book.
     req = int(s["tokens_requested"])
-    rep.check(req == 0 or int(s["books_received"]) >= 0.95 * req, "Stage 2: full order books received for the candidates",
-              f"{_ratio(int(s['books_received']), req)}, {s['stage2_s']}s; events evaluated {s['events_evaluated']}, "
-              f"missing book {s['skipped_missing_book']}, other {s['skipped_other']}")
+    missing, closed, other = int(s["skipped_missing_book"]), int(s["candidates_uncertain"]), int(s["skipped_other"])
+    rep.check(missing <= closed and other == 0, "Stage 2: full order books read for every candidate still open",
+              f"books {_ratio(int(s['books_received']), req)} in {s['stage2_s']}s; events evaluated {s['events_evaluated']}, "
+              f"without a book {missing} (markets closed since the list was built: {closed} events), other problems {other}")
     n_chk = int(s["check_tokens"])
     if n_chk:
         info(f"stage 1 vs stage 2 (seconds apart) on candidates: ask equal {_ratio(int(s['check_ask_equal']), n_chk)}, "
