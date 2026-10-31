@@ -95,6 +95,26 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual([m.yes_id for m in e1.markets], ["111", "121", "131"])
         self.assertEqual([m.no_id for m in e1.markets], ["112", "122", "132"])
         self.assertEqual(e1.yes_price_sum, D("0.915"))
+        self.assertEqual(e1.end_date, "2026-12-31T12:00:00Z")
+
+    def test_end_date_falls_back_to_the_markets(self):
+        ev = event(5, "x", [market(1, "a", "1", "2", "0.5", extra={"endDate": "2026-11-30T00:00:00Z"}),
+                            market(2, "b", "3", "4", "0.5", extra={"endDate": "2026-12-15T00:00:00Z"})])
+        del ev["endDate"]
+        self.assertEqual(classify_event(ev)[0].end_date, "2026-12-15T00:00:00Z")
+        for m in ev["markets"]:
+            del m["endDate"]
+        self.assertEqual(classify_event(ev)[0].end_date, "")
+
+    def test_list_saved_by_the_previous_version_still_loads(self):
+        events, _ = build_world()
+        u = build_universe(events, NOW)
+        d = json.loads(u.to_json())
+        for e in d["events"]:
+            del e["end_date"]
+        old = Universe.from_json(json.dumps(d))
+        self.assertEqual([e.end_date for e in old.events], [""] * len(old.events))
+        self.assertEqual(Universe.from_json(u.to_json()).events[0].end_date, "2026-12-31T12:00:00Z")
 
     def test_augmented_detected_by_other_market_only(self):
         ev = event(5, "x", [market(1, "a", "1", "2", "0.5"),

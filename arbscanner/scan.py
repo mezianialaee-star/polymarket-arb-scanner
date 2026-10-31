@@ -26,10 +26,11 @@ from .screen import DEFAULT_MARGIN, EventScreen, PriceTable, build_price_table, 
 from .universe import SchemaError, Universe, UniverseEvent, build_universe, classify_event, event_number
 
 OPPORTUNITY_FIELDS = [
-    "scan_time", "event_id", "event_slug", "event_title", "category", "n_outcomes", "eliminated",
+    "scan_time", "event_id", "event_slug", "event_title", "category", "end_date", "n_outcomes", "eliminated",
     "basket", "payout_per_unit", "sum_best_ask", "gross_edge_top", "fee_top", "net_edge_top",
     "top_size_min", "max_size", "max_profit", "min_size_required", "exec_size", "exec_profit",
     "exec_cost", "roi_pct", "suspicious", "verified", "fee_sources", "book_age_max_s", "url",
+    "outcomes",
 ]
 
 SCAN_FIELDS = [
@@ -273,6 +274,7 @@ def opportunity_row(scan_time: str, ev: EventEvaluation, basket: str, r: BasketR
         "event_slug": e.slug,
         "event_title": e.title,
         "category": e.category,
+        "end_date": e.end_date,
         "n_outcomes": len(e.markets),
         "eliminated": e.eliminated,
         "basket": basket,
@@ -294,6 +296,9 @@ def opportunity_row(scan_time: str, ev: EventEvaluation, basket: str, r: BasketR
         "fee_sources": _fee_sources(ev),
         "book_age_max_s": fmt(ev.book_age_max_s, 1),
         "url": f"https://polymarket.com/event/{e.slug}" if e.slug else "",
+        # A YES basket is riskless only if these outcomes cover every possibility: the
+        # scanner cannot read the rules, so YES opportunities must be checked by hand.
+        "outcomes": " | ".join(m.title for m in e.markets)[:600],
     }
 
 

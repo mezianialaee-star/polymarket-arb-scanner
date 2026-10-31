@@ -54,6 +54,11 @@ class AnalysisTests(unittest.TestCase):
             self.assertEqual(summary["episodes"], 3)
             self.assertAlmostEqual(summary["total_profit_usd"], round(0.964 * 2 + 0.5, 2))
             self.assertTrue((tmp / "report" / "report.md").exists())
+            import pandas as pd
+            ep = pd.read_csv(tmp / "report" / "episodes.csv", dtype=str)
+            self.assertEqual(set(ep["end_date"]), {"2026-12-31T12:00:00Z"})
+            self.assertIn("A1 | A2 | A3", set(ep["outcomes"]))
+            self.assertIn("## YES baskets to check by hand", (tmp / "report" / "report.md").read_text())
             self.assertTrue((tmp / "report" / "episodes_per_day.png").exists())
             self.assertTrue((tmp / "report" / "profit_distribution.png").exists())
             self.assertTrue((tmp / "report" / "basket_cost_distribution.png").exists())

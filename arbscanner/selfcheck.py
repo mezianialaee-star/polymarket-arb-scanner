@@ -71,6 +71,7 @@ def run_selfcheck(client: PolymarketClient, max_events: int = 300, time_budget_s
             if isinstance(ev, dict) and ev.get("negRisk") is True:
                 counts["neg_events"] += 1
                 counts["neg_events_with_aug_flag"] += int("negRiskAugmented" in ev)
+                counts["neg_events_with_end"] += int(bool(ev.get("endDate")))
                 for m in ev.get("markets") or []:
                     if isinstance(m, dict):
                         counts["neg_markets"] += 1
@@ -101,6 +102,7 @@ def run_selfcheck(client: PolymarketClient, max_events: int = 300, time_budget_s
         rep.check(counts["ids"] >= 0.9 * counts["neg_markets"], "Token ids present on neg-risk markets",
                   _ratio(counts["ids"], counts["neg_markets"]))
         info(f"field 'negRiskAugmented' present on {_ratio(counts['neg_events_with_aug_flag'], counts['neg_events'])} of neg-risk events")
+        info(f"field 'endDate' (when the event ends) present on {_ratio(counts['neg_events_with_end'], counts['neg_events'])} of neg-risk events")
     info(f"eligibility reasons: {universe.stats['reasons']}")
     info(f"fee sources: {universe.stats['fee_sources']}")
     rep.check(len(universe.events) > 0, "Eligible standard neg-risk events found",

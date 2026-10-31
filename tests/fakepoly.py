@@ -62,6 +62,7 @@ def event(eid, title, markets, neg_risk=True, augmented=None, category="Politics
         "archived": False,
         "negRisk": neg_risk,
         "enableNegRisk": bool(neg_risk),
+        "endDate": "2026-12-31T12:00:00Z",
         "category": category,
         "markets": markets,
     }

@@ -88,6 +88,7 @@ class UniverseEvent:
     markets: List[UniverseMarket]
     eliminated: int = 0                    # outcomes already resolved NO
     yes_price_sum: Optional[Decimal] = None  # sum of displayed YES prices (completeness check)
+    end_date: str = ""                     # scheduled end of the event, as given by Gamma (ISO text)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -97,6 +98,7 @@ class UniverseEvent:
             "category": self.category,
             "eliminated": self.eliminated,
             "yes_price_sum": None if self.yes_price_sum is None else str(self.yes_price_sum),
+            "end_date": self.end_date,
             "markets": [m.to_dict() for m in self.markets],
         }
 
@@ -110,6 +112,7 @@ class UniverseEvent:
             markets=[UniverseMarket.from_dict(m) for m in d["markets"]],
             eliminated=int(d.get("eliminated", 0)),
             yes_price_sum=None if d.get("yes_price_sum") is None else Decimal(d["yes_price_sum"]),
+            end_date=str(d.get("end_date") or ""),
         )
 
 
@@ -260,6 +263,16 @@ def _category(event: Dict[str, Any]) -> str:
     return ""
 
 
+def _end_date(event: Dict[str, Any]) -> str:
+    """Scheduled end of the event (ISO text from Gamma), else the latest end of its markets."""
+    value = event.get("endDate")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    dates = [m.get("endDate") for m in event.get("markets") or [] if isinstance(m, dict)]
+    dates = [d.strip() for d in dates if isinstance(d, str) and d.strip()]
+    return max(dates) if dates else ""
+
+
 def _short(text: Any, limit: int = 140) -> str:
     s = " ".join(str(text or "").split())
     return s if len(s) <= limit else s[: limit - 1] + "…"
@@ -345,6 +358,7 @@ def classify_event(event: Any) -> Tuple[Optional[UniverseEvent], str]:
             markets=legs,
             eliminated=eliminated,
             yes_price_sum=price_sum if price_known else None,
+            end_date=_end_date(event),
         ),
         "ok",
     )

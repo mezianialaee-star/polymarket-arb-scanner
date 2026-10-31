@@ -69,6 +69,9 @@ All arithmetic uses exact decimals, so rounding can never create a fake profit.
 - A YES basket is evaluated only if the displayed YES prices add up to at least 0.90 (complete set), and
   is recorded only after the event's full outcome list is re-confirmed with `GET /events/{id}`.
   (A NO basket stays riskless even if an outcome were missing: then every NO leg pays.)
+- Even then, a YES basket pays $1 only if the listed outcomes cover every possibility, and the scanner
+  cannot read the rules. Every YES opportunity records its outcome names and end date, and the report
+  lists them for a check by hand.
 - Unknown fee configuration ⇒ the highest documented rate (7%) is assumed.
 - Edges above 5% are flagged for manual review.
 
@@ -93,7 +96,7 @@ All arithmetic uses exact decimals, so rounding can never create a fake profit.
 | Path | Content |
 | --- | --- |
 | `data/scans/YYYY-MM.csv` | one row per scan: coverage, candidates, books read, timings, checks, opportunities |
-| `data/opportunities/YYYY-MM-DD.csv` | every opportunity: event, basket, best size, profit after fees, cost, link |
+| `data/opportunities/YYYY-MM-DD.csv` | every opportunity: event, outcomes, end date, basket, best size, profit after fees, cost, link |
 | `data/snapshots/YYYY-MM-DD/HH.csv.gz` | every 3 hours: top-of-book cost of every basket vs its payout |
 | `state/universe.json.gz` | list of eligible events (Actions cache, not in git) |
 | `report/` | results (built by the `analyze` workflow) |

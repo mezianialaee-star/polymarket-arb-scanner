@@ -38,7 +38,8 @@ def build_episodes(opps: pd.DataFrame, ok_scan_times: list) -> pd.DataFrame:
     """Group detections of the same (event, basket) seen on consecutive successful scans."""
     if opps.empty:
         return pd.DataFrame(columns=["event_id", "basket", "start", "end", "n_scans", "max_profit",
-                                     "max_size", "median_roi_pct", "title", "category", "n_outcomes", "url"])
+                                     "max_size", "median_roi_pct", "title", "category", "n_outcomes", "end_date",
+                                     "outcomes", "url"])
     index = {t: i for i, t in enumerate(sorted(ok_scan_times))}
     opps = opps[opps["scan_time"].isin(list(index))].copy()
     opps["scan_idx"] = opps["scan_time"].map(index)
@@ -61,6 +62,8 @@ def build_episodes(opps: pd.DataFrame, ok_scan_times: list) -> pd.DataFrame:
                 "last_idx": r["scan_idx"], "n_scans": 1, "profits": [r["exec_profit"]],
                 "sizes": [r["exec_size"]], "rois": [r["roi_pct"]], "title": r["event_title"],
                 "category": r["category"], "n_outcomes": r["n_outcomes"], "url": r["url"],
+                "end_date": r.get("end_date", ""),  # when the basket pays: for the yearly return
+                "outcomes": r.get("outcomes", ""),  # YES baskets: check by hand that they cover everything
             }
         if current is not None:
             rows.append(current)
@@ -254,6 +257,16 @@ def main(argv=None) -> int:
                   "| --- | --- | --- | --- | --- | --- |"]
         for _, r in episodes.sort_values("max_profit", ascending=False).head(10).iterrows():
             lines.append(f"| {r['title']} | {r['basket']} | {r['n_outcomes']} | {r['max_profit']:.2f} | {r['n_scans']} | {r['url']} |")
+        lines.append("")
+    yes_eps = episodes[episodes["basket"] == "YES"] if len(episodes) else episodes
+    if len(yes_eps):
+        lines += ["## YES baskets to check by hand", "",
+                  "A YES basket pays $1 only if its outcomes cover every possibility. Read the rules of each "
+                  "event: if some result is not listed, it was not an arbitrage.", "",
+                  "| Event | Outcomes | Best profit ($) | Ends | Link |", "| --- | --- | --- | --- | --- |"]
+        for _, r in yes_eps.sort_values("max_profit", ascending=False).iterrows():
+            lines.append(f"| {r['title']} | {str(r.get('outcomes', ''))[:200]} | {r['max_profit']:.2f} | "
+                         f"{str(r.get('end_date', ''))[:10]} | {r['url']} |")
         lines.append("")
     for img in ("episodes_per_day.png", "profit_distribution.png", "basket_cost_distribution.png"):
         if (out / img).exists():

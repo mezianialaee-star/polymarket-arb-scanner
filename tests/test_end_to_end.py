@@ -97,6 +97,8 @@ class EndToEnd(unittest.TestCase):
         opps = {(r["event_id"], r["basket"]): r for r in self.opportunities()}
         self.assertEqual(opps[("1002", "NO")]["fee_sources"], "disabled")
         self.assertEqual(opps[("1001", "YES")]["url"], "https://polymarket.com/event/event-1001")
+        self.assertEqual(opps[("1001", "YES")]["end_date"], "2026-12-31T12:00:00Z")   # when the basket pays
+        self.assertEqual(opps[("1001", "YES")]["outcomes"], "A1 | A2 | A3")
         self.assertEqual(opps[("1001", "YES")]["suspicious"], "0")
         self.assertEqual(opps[("1001", "YES")]["verified"], "1")   # full outcome list confirmed
         self.assertEqual(opps[("1002", "NO")]["verified"], "")     # not needed for NO baskets
