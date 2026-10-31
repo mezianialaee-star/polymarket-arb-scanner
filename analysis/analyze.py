@@ -157,9 +157,23 @@ def main(argv=None) -> int:
 
     if not snaps.empty and "yes_cost" in snaps:
         snaps = num(snaps, ["yes_cost", "no_cost", "yes_fee_top", "no_fee_top", "n_outcomes"])
-        yes_cost = snaps["yes_cost"].dropna()
+        # YES baskets of events whose outcome list looks incomplete are never arbitrage: leave them out.
+        yes_rows = snaps[snaps["yes_cost"].notna() & (snaps["yes_guarded"] != "1")]
+        yes_cost = yes_rows["yes_cost"]
         no_rows = snaps[snaps["no_cost"].notna() & (snaps["n_outcomes"] > 1)]
         no_cost = (no_rows["no_cost"] / (no_rows["n_outcomes"] - 1)).dropna()
+        # Of the baskets priced below their payout at the best asks, how many could really be
+        # executed after fees and order minimums (same scans)?
+        cheap_yes = yes_rows[yes_rows["yes_cost"] < 1]
+        cheap_no = no_rows[no_rows["no_cost"] < no_rows["n_outcomes"] - 1]
+        snap_times = set(snaps["scan_time"])
+        exec_at_snaps = opps[opps["scan_time"].isin(list(snap_times))] if len(opps) else opps
+        n_cheap = len(cheap_yes) + len(cheap_no)
+        summary.update({
+            "baskets_below_payout_at_snapshots": int(n_cheap),
+            "baskets_executable_at_snapshots": int(len(exec_at_snaps)),
+            "executable_share_of_below_payout": round(len(exec_at_snaps) / n_cheap, 4) if n_cheap else None,
+        })
         summary.update({
             "snapshots": int(snaps["scan_time"].nunique()),
             "snapshot_rows": int(len(snaps)),
@@ -230,6 +244,9 @@ def main(argv=None) -> int:
         f"| Share of scans with at least one opportunity | {summary['share_scans_with_opportunity']:.1%} |",
         f"| Median cost of a YES basket (payout $1) | {summary.get('yes_basket_cost_median', 'n/a')} |",
         f"| Share of event snapshots where the YES basket cost < $1 (before fees) | {_pct(summary.get('yes_basket_cost_below_1_share'))} |",
+        f"| Baskets below their payout that were executable after fees and order minimums | "
+        f"{summary.get('baskets_executable_at_snapshots', 'n/a')} of {summary.get('baskets_below_payout_at_snapshots', 'n/a')} "
+        f"({_pct(summary.get('executable_share_of_below_payout'))}) |",
         "",
     ]
     if len(episodes):

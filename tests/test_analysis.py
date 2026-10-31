@@ -65,6 +65,10 @@ class AnalysisTests(unittest.TestCase):
             self.assertEqual(summary["no_book_mirror_equal"], 1.0)
             self.assertEqual(summary["listing_refreshes"], 2)            # at 12:00 and 13:10 (list older than 60 min)
             self.assertEqual(summary["listing_complete_share"], 1.0)
+            # first snapshot scan: YES 1001 (0.95, executable) and 1003 (0.99, killed by fees) are below $1,
+            # NO 1002 is below its payout and executable; 1008 looks cheap but its list is incomplete.
+            self.assertEqual(summary["baskets_below_payout_at_snapshots"], 3)
+            self.assertEqual(summary["baskets_executable_at_snapshots"], 2)
             self.assertIn("Stage-1 best ask = full-book best ask", (tmp / "report" / "report.md").read_text())
             # Empty data folder: no crash
             analyze.main(["--data", str(tmp / "nothing"), "--out", str(tmp / "report_empty")])
