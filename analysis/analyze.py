@@ -137,8 +137,25 @@ def main(argv=None) -> int:
         "no_book_mirror_equal": share("check_mirror_equal"),
     })
 
+    to_check = pd.DataFrame()
     if not opps.empty:
         opps = num(opps, ["exec_profit", "exec_size", "exec_cost", "roi_pct", "net_edge_top", "n_outcomes"])
+        # Every YES basket, suspicious or not, goes on the list to check by hand.
+        yes_all = opps[(opps["basket"] == "YES") & (opps["verified"] == "1") & (opps["exec_profit"] >= MIN_PROFIT)]
+        if len(yes_all):
+            for col in ("outcomes", "end_date"):
+                if col not in yes_all:
+                    yes_all = yes_all.assign(**{col: ""})
+            yes_all = yes_all.assign(outcomes=yes_all["outcomes"].fillna(""), end_date=yes_all["end_date"].fillna(""))
+            to_check = (yes_all.sort_values("exec_profit", ascending=False)
+                        .groupby("event_id", sort=False)
+                        .agg(title=("event_title", "first"),
+                             outcomes=("outcomes", lambda v: next((x for x in v if x), "")),
+                             end_date=("end_date", "max"), best_profit=("exec_profit", "max"),
+                             best_roi_pct=("roi_pct", "max"), scans=("scan_time", "nunique"),
+                             suspicious=("suspicious", "max"), url=("url", "first"))
+                        .sort_values("best_profit", ascending=False))
+            to_check.to_csv(out / "yes_to_check.csv")
         opps = opps[(opps["suspicious"] != "1") & (opps["exec_profit"] >= MIN_PROFIT)]
         # YES baskets count only if the full outcome list was confirmed during the scan.
         opps = opps[(opps["basket"] != "YES") | (opps["verified"] == "1")]
@@ -258,15 +275,17 @@ def main(argv=None) -> int:
         for _, r in episodes.sort_values("max_profit", ascending=False).head(10).iterrows():
             lines.append(f"| {r['title']} | {r['basket']} | {r['n_outcomes']} | {r['max_profit']:.2f} | {r['n_scans']} | {r['url']} |")
         lines.append("")
-    yes_eps = episodes[episodes["basket"] == "YES"] if len(episodes) else episodes
-    if len(yes_eps):
+    if len(to_check):
         lines += ["## YES baskets to check by hand", "",
                   "A YES basket pays $1 only if its outcomes cover every possibility. Read the rules of each "
-                  "event: if some result is not listed, it was not an arbitrage.", "",
-                  "| Event | Outcomes | Best profit ($) | Ends | Link |", "| --- | --- | --- | --- | --- |"]
-        for _, r in yes_eps.sort_values("max_profit", ascending=False).iterrows():
-            lines.append(f"| {r['title']} | {str(r.get('outcomes', ''))[:200]} | {r['max_profit']:.2f} | "
-                         f"{str(r.get('end_date', ''))[:10]} | {r['url']} |")
+                  "event: if some result is not listed, it was not an arbitrage. Edges above 5% (suspicious) "
+                  "are left out of the numbers above until checked. Full list: `yes_to_check.csv`.", "",
+                  "| Event | Outcomes | Best profit ($) | Best return | Ends | Suspicious | Link |",
+                  "| --- | --- | --- | --- | --- | --- | --- |"]
+        for _, r in to_check.head(30).iterrows():
+            names = str(r["outcomes"]).replace(" | ", " / ").replace("|", "/")[:200]   # "|" would break the table
+            lines.append(f"| {r['title']} | {names} | {r['best_profit']:.2f} | "
+                         f"{r['best_roi_pct']:.2f}% | {str(r['end_date'])[:10]} | {'yes' if r['suspicious'] == '1' else 'no'} | {r['url']} |")
         lines.append("")
     for img in ("episodes_per_day.png", "profit_distribution.png", "basket_cost_distribution.png"):
         if (out / img).exists():
