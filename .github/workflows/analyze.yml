@@ -20,13 +20,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
       - name: Install analysis tools
-        run: |
-          python3 -m venv .venv
-          .venv/bin/pip install --quiet -r analysis/requirements.txt
+        run: python -m pip install --quiet -r analysis/requirements.txt
 
       - name: Build the report
-        run: .venv/bin/python analysis/analyze.py --data data --out report
+        run: python analysis/analyze.py --data data --out report
 
       - name: Save the report
         run: |

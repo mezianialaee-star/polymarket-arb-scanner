@@ -16,12 +16,20 @@ exchange's order rules — the profit is locked in whatever happens. It is the s
 
 ## What runs every 10 minutes (GitHub Actions)
 
-1. **List events** (Gamma API, refreshed hourly) and keep only events where a basket is truly riskless
-   (see *Safety rules*).
-2. **Read every order book** of those outcomes (CLOB API, `POST /books`, public data).
-3. **Find the optimal basket size** for the YES and NO baskets of every event by walking the books.
-4. **Record** every opportunity, a summary of the scan, and an hourly snapshot of how far each basket
-   is from its payout.
+There are about 6,000 eligible events and 65,000 outcomes, so reading every full order book every
+10 minutes would mean ~130,000 books per scan. The scan works in two stages instead:
+
+1. **List events** (Gamma API, rebuilt every hour, kept in the Actions cache) and keep only events
+   where a basket is truly riskless (see *Safety rules*).
+2. **Stage 1 — screen everything.** One `POST /prices` request per 250 outcomes gives the best bid and
+   best ask of every YES token (~260 requests). A basket can only be profitable if the sum of its best
+   asks is below its payout (fees and deeper levels only add cost), so every other event is ruled out.
+   The NO best ask is `1 − YES best bid` (YES and NO share one order book).
+3. **Stage 2 — decide on the candidates.** For the few events left, read the full order books of every
+   YES and NO token (`POST /books`) and find the optimal basket size, after fees and order minimums.
+   Only stage 2 can report an opportunity.
+4. **Record** every opportunity, a summary of the scan, and every 3 hours a snapshot of how far each
+   basket is from its payout.
 
 Nothing is ever traded: the tool only reads public data.
 
@@ -62,20 +70,26 @@ All arithmetic uses exact decimals, so rounding can never create a fake profit.
 ## How it was verified
 
 - **Automated tests** (`tests/`): official fee tables, the optimiser compared with a brute-force search on
-  4,000 random order books, every eligibility rule, and end-to-end runs against a fake Polymarket API
-  (pagination, retries, rejected ids, malformed data, blocked access, incomplete listings) on Python 3.11–3.13.
-- **Live self-check** (`python3 -m arbscanner selfcheck`, also run by the `verify` workflow): on real data it
-  checks the YES/NO mapping against displayed prices, condition ids, the completeness of event listings,
-  and that baskets cost about their payout or more, as theory predicts.
+  4,000 random order books, every eligibility rule, a proof by random testing that stage 1 never screens
+  out a basket the full books show as profitable (3,000 random events, ~1,400 opportunities), and
+  end-to-end runs against a fake Polymarket API (pagination, retries, refused ids, both possible meanings
+  of the `/prices` sides, malformed data, blocked access, incomplete listings) on Python 3.11–3.14.
+- **Live self-check** (`python3 -m arbscanner selfcheck`, run by the `verify` workflow at every change):
+  on real data it lists every open event, runs a real two-stage scan, and checks the YES/NO mapping,
+  condition ids, that stage-1 prices equal the full books, that the NO book mirrors the YES book exactly,
+  the completeness of event listings, and that baskets cost about their payout or more, as theory predicts.
+- **Every scan** re-checks itself: which `/prices` side is the ask is decided from the data (the best bid
+  is always below the best ask; Polymarket's docs contradict each other on this), and stage-1 prices of the
+  candidates are compared with their full books.
 
 ## Data layout
 
 | Path | Content |
 | --- | --- |
-| `data/scans/YYYY-MM.csv` | one row per scan: status, events checked, books read, opportunities |
+| `data/scans/YYYY-MM.csv` | one row per scan: coverage, candidates, books read, timings, checks, opportunities |
 | `data/opportunities/YYYY-MM-DD.csv` | every opportunity: event, basket, best size, profit after fees, cost, link |
-| `data/snapshots/YYYY-MM-DD/HH.csv.gz` | hourly: cost of every basket vs its payout |
-| `data/universe.json` | current list of eligible events and outcomes |
+| `data/snapshots/YYYY-MM-DD/HH.csv.gz` | every 3 hours: top-of-book cost of every basket vs its payout |
+| `state/universe.json.gz` | list of eligible events (Actions cache, not in git) |
 | `report/` | results (built by the `analyze` workflow) |
 
 ## Results
@@ -87,15 +101,16 @@ See [`report/report.md`](report/report.md).
 - Scans every 10 minutes: opportunities lasting seconds are missed and durations are approximate.
 - Detection is not execution: each leg is a separate order and prices can move in between
   (sports markets also delay marketable orders by a few seconds).
+- New events are picked up when the list is rebuilt (at most one hour later).
 - Polymarket rounds fees per trade (differences below $0.00001).
 
 ## Run it
 
 ```bash
-python3 -m arbscanner selfcheck          # live check on real data
-python3 -m arbscanner scan --data data   # one scan
+python3 -m arbscanner selfcheck          # live check on real data (~10 min: lists every event)
+python3 -m arbscanner scan --data data   # one scan (the first one builds the list of events)
 python3 -m unittest discover -s tests -t .
 pip install -r analysis/requirements.txt && python3 analysis/analyze.py --data data --out report
 ```
 
-The scanner itself uses only the Python standard library (3.9+).
+The scanner itself uses only the Python standard library (tested on Python 3.11–3.14).

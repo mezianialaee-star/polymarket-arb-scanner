@@ -57,7 +57,15 @@ class AnalysisTests(unittest.TestCase):
             self.assertTrue((tmp / "report" / "episodes_per_day.png").exists())
             self.assertTrue((tmp / "report" / "profit_distribution.png").exists())
             self.assertTrue((tmp / "report" / "basket_cost_distribution.png").exists())
-            self.assertEqual(summary["events_monitored"], 5)
+            self.assertEqual(summary["events_monitored"], 6)          # every event screened at stage 1
+            self.assertEqual(summary["snapshots"], 1)                  # one per 3-hour slot
+            self.assertEqual(summary["median_events_per_scan"], 6)
+            self.assertEqual(summary["median_candidate_events_per_scan"], 4)
+            self.assertEqual(summary["stage1_vs_books_ask_equal"], 1.0)
+            self.assertEqual(summary["no_book_mirror_equal"], 1.0)
+            self.assertEqual(summary["listing_refreshes"], 2)            # at 12:00 and 13:10 (list older than 60 min)
+            self.assertEqual(summary["listing_complete_share"], 1.0)
+            self.assertIn("Stage-1 best ask = full-book best ask", (tmp / "report" / "report.md").read_text())
             # Empty data folder: no crash
             analyze.main(["--data", str(tmp / "nothing"), "--out", str(tmp / "report_empty")])
             self.assertIn("No scan data", (tmp / "report_empty" / "report.md").read_text())

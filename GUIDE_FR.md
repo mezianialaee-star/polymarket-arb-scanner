@@ -1,24 +1,15 @@
 # Guide (pour toi, Alae)
 
-## 1. Mettre le projet en ligne (15 min, une seule fois)
+## 1. Où en est le projet
 
-1. Crée un compte sur **github.com** (gratuit) et confirme ton e-mail.
-2. Clique sur **New repository**. Nom : `polymarket-arb-scanner`. Coche **Public**
-   (obligatoire : en public, GitHub Actions est gratuit et illimité). Ne coche rien d'autre. **Create**.
-3. Sur la page du dépôt, clique **uploading an existing file**, glisse **tout le contenu** du dossier
-   dézippé (y compris le dossier `.github`), puis **Commit changes**.
-4. Va dans l'onglet **Actions**. Tu dois voir 3 workflows : `scan`, `verify`, `analyze`.
-   Si tu ne les vois pas, le dossier `.github` (caché sur Mac/Windows) n'est pas passé :
-   dis-le-moi, je te donne la solution en 2 minutes.
+Le code est sur GitHub et tourne tout seul : un scan toutes les 10 minutes (onglet **Actions** → `scan`),
+les résultats arrivent dans le dossier `data/`. Tu n'as rien à faire.
 
-## 2. Vérification en direct (le test qui compte)
+## 2. Vérifier que tout marche (quand tu veux)
 
-Onglet **Actions** → **verify** → **Run workflow**. Après ~2 minutes :
+Onglet **Actions** → **verify** → **Run workflow**. Après ~10 minutes :
 - coche verte = tous les tests passent ET le scanner lit correctement les vraies données de Polymarket ;
-- croix rouge = clique dessus, copie le texte de l'étape en rouge et envoie-le-moi.
-
-Ensuite **Actions** → **scan** → **Run workflow** une première fois. Après, il tourne tout seul toutes les
-10 minutes et les résultats apparaissent dans le dossier `data/`.
+- croix rouge = clique dessus, copie le texte en rouge et envoie-le-moi.
 
 ## 3. Mi-décembre : les résultats
 
@@ -29,22 +20,28 @@ Ensuite **Actions** → **scan** → **Run workflow** une première fois. Après
 
 > « Dans un marché à plusieurs issues sur Polymarket, une seule issue gagne. Acheter toutes les issues
 > rapporte donc exactement 1 $. Si on peut les acheter toutes pour moins de 1 $, frais compris, c'est un
-> profit sans risque. J'ai construit un scanner qui lit tous les carnets d'ordres toutes les 10 minutes,
-> calcule la taille optimale de ce panier et mesure combien ces opportunités rapportent et combien de
-> temps elles durent. C'est la même logique que l'arbitrage d'ETF. »
+> profit sans risque. J'ai construit un scanner qui surveille les ~6 000 marchés de ce type toutes les
+> 10 minutes, calcule la taille optimale de ce panier et mesure combien ces opportunités rapportent et
+> combien de temps elles durent. C'est la même logique que l'arbitrage d'ETF. »
 
-Les 3 questions qu'on peut te poser, et la réponse :
+Les questions qu'on peut te poser, et la réponse :
 - **Pourquoi c'est sans risque ?** Une seule issue gagne : le panier YES paie toujours 1 $,
   le panier NO toujours N − 1 $.
 - **Comment tu trouves la taille optimale ?** Le coût marginal d'un panier de plus ne fait que monter
   quand on remonte les carnets, donc le profit est concave : on achète tant que le panier suivant coûte
   moins que ce qu'il rapporte.
+- **Comment tu scannes 65 000 issues toutes les 10 minutes ?** En deux étapes. D'abord seulement les
+  meilleurs prix de tout le monde (~260 requêtes). Un panier ne peut être rentable que si la somme des
+  meilleurs prix est sous son paiement (les frais et les niveaux plus profonds ne font qu'ajouter du coût) :
+  c'est une condition nécessaire, donc on élimine presque tout sans rien rater. Ensuite on lit les carnets
+  complets des quelques candidats seulement.
 - **Pourquoi l'opportunité existe ?** Il faut acheter plusieurs jambes en même temps, avec des frais et
   des minimums d'ordre : peu de gens le font, et elle disparaît vite.
 
 ## 5. Sur ton CV (à compléter avec les vrais chiffres)
 
-*Polymarket arbitrage scanner (Python, GitHub Actions) — Monitored N multi-outcome markets every
-10 min for X weeks; detected Y riskless basket opportunities worth $Z after fees (median duration W min).*
+*Polymarket arbitrage scanner (Python, GitHub Actions) — Monitored ~6,000 multi-outcome markets
+(65,000 outcomes) every 10 min for X weeks with a two-stage screen; detected Y riskless basket
+opportunities worth $Z after fees (median duration W min).*
 
 Dans les compétences : `Python (basic)`.

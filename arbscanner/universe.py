@@ -120,17 +120,13 @@ class Universe:
     stats: Dict[str, Any] = field(default_factory=dict)
 
     def token_ids(self) -> List[str]:
-        ids: List[str] = []
-        for ev in self.events:
-            for m in ev.markets:
-                ids.append(m.yes_id)
-                ids.append(m.no_id)
-        return ids
+        """Every YES and NO token id, YES first for each outcome."""
+        return [t for ev in self.events for m in ev.markets for t in (m.yes_id, m.no_id)]
 
     def age_minutes(self, now: datetime) -> float:
         return (now - self.generated_at).total_seconds() / 60.0
 
-    def to_json(self) -> str:
+    def to_json(self, compact: bool = False) -> str:
         return json.dumps(
             {
                 "schema": UNIVERSE_SCHEMA,
@@ -138,7 +134,8 @@ class Universe:
                 "stats": self.stats,
                 "events": [e.to_dict() for e in self.events],
             },
-            indent=1,
+            indent=None if compact else 1,
+            separators=(",", ":") if compact else None,
             sort_keys=True,
         )
 

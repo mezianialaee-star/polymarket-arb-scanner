@@ -1,6 +1,8 @@
 name: scan
 
-# Runs one scan every 10 minutes and saves the results in the repository (data/).
+# Every 10 minutes: one scan of every multi-outcome Polymarket event. Results are saved
+# in the repository (data/). The list of events (a few MB, rebuilt every hour) is kept
+# in the Actions cache (state/), not in git.
 on:
   schedule:
     - cron: "*/10 * * * *"
@@ -18,14 +20,39 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHONDONTWRITEBYTECODE: "1"
-    timeout-minutes: 15
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v6
 
+      - name: Restore the list of events
+        uses: actions/cache/restore@v5
+        with:
+          path: state
+          key: universe-${{ github.run_id }}
+          restore-keys: universe-
+
       - name: Scan Polymarket (read-only)
+        id: scan
         run: |
           python3 --version
-          python3 -m arbscanner scan --data data
+          before=$(sha256sum state/universe.json.gz 2>/dev/null || echo none)
+          set +e
+          python3 -m arbscanner scan --data data --universe state/universe.json.gz
+          code=$?
+          set -e
+          after=$(sha256sum state/universe.json.gz 2>/dev/null || echo none)
+          if [ -f state/universe.json.gz ] && [ "$before" != "$after" ]; then
+            echo "refreshed=1" >> "$GITHUB_OUTPUT"
+            echo "The list of events was rebuilt."
+          fi
+          exit "$code"
+
+      - name: Keep the new list of events
+        if: always() && steps.scan.outputs.refreshed == '1'
+        uses: actions/cache/save@v5
+        with:
+          path: state
+          key: universe-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Save results
         if: success() || failure()

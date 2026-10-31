@@ -171,6 +171,13 @@ def build_world(truncated=False):
     return events, books
 
 
+def best_prices(b):
+    """(best ask, best bid) of a fake book, as the original strings (None if empty)."""
+    asks = sorted(b["asks"], key=lambda l: D(l["price"]))
+    bids = sorted(b["bids"], key=lambda l: D(l["price"]), reverse=True)
+    return (asks[0]["price"] if asks else None), (bids[0]["price"] if bids else None)
+
+
 class FakePolymarket:
     def __init__(self, events, books, page_size=3, full_events=None):
         self.events = events
@@ -180,12 +187,36 @@ class FakePolymarket:
         self.keyset_enabled = True
         self.keyset_returns_list = False
         self.fail_first_books = False
+        self.fail_first_prices = False
         self.force_status = None          # e.g. 403 for every request
         self.books_bad_shape = False
+        self.prices_bad_shape = False
+        # POST /prices behaviour. Polymarket's docs disagree on which side is the ask,
+        # so the scanner must work with both.
+        self.prices_buy_is_ask = True
+        self.prices_as_numbers = False    # docs: prices may be JSON numbers
+        self.prices_empty_side = "omit"   # "omit" the side, or answer "zero"
+        self.prices_unknown = "fail"      # unknown token: "fail" the whole request (404) or "omit" it
+        self.prices_override = {}         # token -> {"BUY": .., "SELL": ..} answered as is
         self.requests = []
         self._books_calls = 0
+        self._prices_calls = 0
         self._server = None
         self._thread = None
+
+    def price_answer(self, token):
+        if token in self.prices_override:
+            return self.prices_override[token]
+        ask, bid = best_prices(self.books[token])
+        buy, sell = (ask, bid) if self.prices_buy_is_ask else (bid, ask)
+        out = {}
+        for side, value in (("BUY", buy), ("SELL", sell)):
+            if value is None:
+                if self.prices_empty_side == "zero":
+                    out[side] = 0 if self.prices_as_numbers else "0"
+                continue
+            out[side] = float(value) if self.prices_as_numbers else value
+        return out
 
     @property
     def url(self):
@@ -251,6 +282,8 @@ class FakePolymarket:
                 fake.requests.append(("POST", u.path, payload, self.headers.get("User-Agent")))
                 if fake.force_status:
                     return self._send(fake.force_status, {"error": "forced"})
+                if u.path == "/prices":
+                    return self._prices(payload)
                 if u.path != "/books":
                     return self._send(404, {"error": "unknown path"})
                 fake._books_calls += 1
@@ -264,6 +297,30 @@ class FakePolymarket:
                 if "BAD-TOKEN" in ids:
                     return self._send(400, {"error": "Invalid payload"})
                 return self._send(200, [fake.books[t] for t in ids if t in fake.books])
+
+            def _prices(self, payload):
+                fake._prices_calls += 1
+                if fake.fail_first_prices and fake._prices_calls == 1:
+                    return self._send(503, {"error": "temporarily unavailable"})
+                if fake.prices_bad_shape:
+                    return self._send(200, [{"unexpected": True}])
+                if not isinstance(payload, list) or len(payload) > 500:
+                    return self._send(400, {"error": "Invalid payload"})
+                out = {}
+                for item in payload:
+                    token, side = item.get("token_id"), item.get("side")
+                    if side not in ("BUY", "SELL"):
+                        return self._send(400, {"error": "Invalid side"})
+                    if token not in fake.books and token not in fake.prices_override:
+                        if fake.prices_unknown == "fail":
+                            return self._send(404, {"error": "No orderbook exists for the requested token id"})
+                        continue
+                    answer = fake.price_answer(token)
+                    if side in answer:
+                        out.setdefault(token, {})[side] = answer[side]
+                    else:
+                        out.setdefault(token, {})
+                return self._send(200, out)
 
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)

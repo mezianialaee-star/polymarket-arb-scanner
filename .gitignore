@@ -3,3 +3,5 @@ __pycache__/
 .venv/
 *.tmp
 .DS_Store
+# list of events: kept in the Actions cache, not in git
+state/

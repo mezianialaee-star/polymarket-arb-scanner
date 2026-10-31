@@ -94,20 +94,44 @@ def main(argv=None) -> int:
         print("no data yet")
         return 0
 
-    scans = num(scans, ["events_evaluated", "universe_events", "duration_s", "opportunities_yes", "opportunities_no"])
+    scans = num(scans, ["screened_events", "universe_events", "universe_markets", "candidate_events",
+                        "events_evaluated", "duration_s", "stage1_s", "stage2_s", "http_requests",
+                        "opportunities_yes", "opportunities_no", "check_tokens", "check_ask_equal",
+                        "check_bid_equal", "check_mirror_equal"])
     scans["t"] = pd.to_datetime(scans["scan_time"], utc=True)
     ok = scans[scans["status"] == "ok"].sort_values("t")
     first, last = scans["t"].min(), scans["t"].max()
     interval_min = float(ok["t"].diff().dt.total_seconds().median() / 60) if len(ok) > 1 else float("nan")
 
+    def med(col):
+        return float(ok[col].median()) if len(ok) and col in ok and ok[col].notna().any() else 0.0
+
+    def share(col):
+        if col not in ok or "check_tokens" not in ok:
+            return None
+        total = float(ok["check_tokens"].sum())
+        return round(float(ok[col].sum()) / total, 4) if total else None
+
+    refreshed = ok[ok["universe_refreshed"] == "1"] if "universe_refreshed" in ok else ok.iloc[0:0]
     summary.update({
         "period_start": str(first), "period_end": str(last),
         "days": round((last - first).total_seconds() / 86400, 2),
         "scans": int(len(scans)), "scans_ok": int(len(ok)),
         "scans_failed": int((scans["status"] != "ok").sum()),
+        "failure_kinds": {k: int(v) for k, v in scans.loc[scans["status"] != "ok", "status"].value_counts().items()},
         "median_scan_interval_min": round(interval_min, 1) if interval_min == interval_min else None,
-        "median_events_per_scan": float(ok["events_evaluated"].median()) if len(ok) else 0,
-        "median_scan_duration_s": float(ok["duration_s"].median()) if len(ok) else 0,
+        "median_events_per_scan": med("screened_events"),
+        "median_outcomes_per_scan": med("universe_markets"),
+        "median_candidate_events_per_scan": med("candidate_events"),
+        "median_scan_duration_s": med("duration_s"),
+        "median_stage1_s": med("stage1_s"),
+        "median_stage2_s": med("stage2_s"),
+        "median_requests_per_scan": med("http_requests"),
+        "listing_refreshes": int(len(refreshed)),
+        "listing_complete_share": round(float((refreshed["gamma_complete"] == "1").mean()), 4) if len(refreshed) else None,
+        "stage1_vs_books_ask_equal": share("check_ask_equal"),
+        "stage1_vs_books_bid_equal": share("check_bid_equal"),
+        "no_book_mirror_equal": share("check_mirror_equal"),
     })
 
     if not opps.empty:
@@ -131,16 +155,18 @@ def main(argv=None) -> int:
         "share_scans_with_opportunity": round(float(opps["scan_time"].nunique() / max(len(ok), 1)), 4) if len(opps) else 0.0,
     })
 
-    if not snaps.empty:
-        snaps = num(snaps, ["yes_sum_best_ask", "no_sum_best_ask", "n_outcomes"])
-        yes_cost = snaps.loc[snaps["yes_complete"] == "1", "yes_sum_best_ask"].dropna()
-        no_cost = (snaps.loc[snaps["no_complete"] == "1", "no_sum_best_ask"]
-                   / (snaps.loc[snaps["no_complete"] == "1", "n_outcomes"] - 1)).dropna()
+    if not snaps.empty and "yes_cost" in snaps:
+        snaps = num(snaps, ["yes_cost", "no_cost", "yes_fee_top", "no_fee_top", "n_outcomes"])
+        yes_cost = snaps["yes_cost"].dropna()
+        no_rows = snaps[snaps["no_cost"].notna() & (snaps["n_outcomes"] > 1)]
+        no_cost = (no_rows["no_cost"] / (no_rows["n_outcomes"] - 1)).dropna()
         summary.update({
+            "snapshots": int(snaps["scan_time"].nunique()),
             "snapshot_rows": int(len(snaps)),
             "events_monitored": int(snaps["event_id"].nunique()),
             "yes_basket_cost_median": round(float(yes_cost.median()), 4) if len(yes_cost) else None,
             "yes_basket_cost_below_1_share": round(float((yes_cost < 1).mean()), 4) if len(yes_cost) else None,
+            "yes_basket_cost_within_1pct_share": round(float((yes_cost < 1.01).mean()), 4) if len(yes_cost) else None,
             "no_basket_cost_ratio_median": round(float(no_cost.median()), 4) if len(no_cost) else None,
         })
         if len(yes_cost):
@@ -148,7 +174,7 @@ def main(argv=None) -> int:
             ax.hist(yes_cost.clip(upper=1.5), bins=60, color="#4C72B0")
             ax.axvline(1.0, color="black", linestyle="--", linewidth=1)
             ax.set_xlabel(r"Cost of buying YES on every outcome at the best asks (\$) — the basket pays \$1")
-            ax.set_ylabel("event-hours")
+            ax.set_ylabel("event snapshots")
             ax.set_title(r"How far multi-outcome baskets are from \$1")
             fig.tight_layout()
             fig.savefig(out / "basket_cost_distribution.png", dpi=150)
@@ -189,7 +215,12 @@ def main(argv=None) -> int:
         "| Metric | Value |",
         "| --- | --- |",
         f"| Multi-outcome events monitored | {summary.get('events_monitored', 'n/a')} |",
-        f"| Median events checked per scan | {summary['median_events_per_scan']:.0f} |",
+        f"| Median events / outcomes checked per scan | {summary['median_events_per_scan']:.0f} / "
+        f"{summary['median_outcomes_per_scan']:.0f} |",
+        f"| Median scan time (stage 1 / stage 2) | {summary['median_scan_duration_s']:.0f} s "
+        f"({summary['median_stage1_s']:.0f} s / {summary['median_stage2_s']:.0f} s) |",
+        f"| Median full-book reads per scan (candidate events) | {summary['median_candidate_events_per_scan']:.0f} |",
+        f"| Stage-1 best ask = full-book best ask (candidates) | {_pct(summary.get('stage1_vs_books_ask_equal'))} |",
         f"| Arbitrage episodes (≥ ${MIN_PROFIT} after fees and order minimums) | {summary['episodes']} "
         f"(YES {summary['episodes_yes']}, NO {summary['episodes_no']}) |",
         f"| Episodes worth ≥ $1 / ≥ $10 | {summary['episodes_profit_ge_1']} / {summary['episodes_profit_ge_10']} |",
@@ -198,7 +229,7 @@ def main(argv=None) -> int:
         f"| Median observed duration | ~{summary['median_duration_min']} min |",
         f"| Share of scans with at least one opportunity | {summary['share_scans_with_opportunity']:.1%} |",
         f"| Median cost of a YES basket (payout $1) | {summary.get('yes_basket_cost_median', 'n/a')} |",
-        f"| Share of event-hours where the YES basket cost < $1 | {_pct(summary.get('yes_basket_cost_below_1_share'))} |",
+        f"| Share of event snapshots where the YES basket cost < $1 (before fees) | {_pct(summary.get('yes_basket_cost_below_1_share'))} |",
         "",
     ]
     if len(episodes):

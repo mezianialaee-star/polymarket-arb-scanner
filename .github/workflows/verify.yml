@@ -1,7 +1,8 @@
 name: verify
 
-# 1) all tests (math, eligibility rules, end-to-end with a fake API)
-# 2) live self-check on real Polymarket data
+# 1) all tests (math, eligibility rules, screening, end-to-end with a fake API)
+# 2) analysis tests (with pandas/matplotlib)
+# 3) live self-check on real Polymarket data (full listing + a real two-stage scan + cross-checks)
 # Runs automatically when the code changes, and on demand (Actions tab -> verify -> Run workflow).
 # Results are also shown as annotations on the run's summary page.
 on:
@@ -11,6 +12,7 @@ on:
     paths:
       - "arbscanner/**"
       - "tests/**"
+      - "analysis/**"
       - ".github/**"
 
 permissions:
@@ -21,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHONDONTWRITEBYTECODE: "1"
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
 
@@ -46,3 +48,21 @@ jobs:
           if [ "$code" -ne 0 ]; then level=error; else level=notice; fi
           python3 .github/annotate.py "$level" "Live self-check" selfcheck-output.txt
           exit "$code"
+
+      - uses: actions/setup-python@v6
+        if: success() || failure()
+        with:
+          python-version: "3.13"
+
+      - name: Analysis tests (pandas, matplotlib)
+        if: success() || failure()
+        run: |
+          python -m pip install --quiet -r analysis/requirements.txt
+          set +e
+          python -m unittest tests.test_analysis -v > analysis-output.txt 2>&1
+          code=$?
+          cat analysis-output.txt
+          if [ "$code" -ne 0 ] || grep -q "skipped" analysis-output.txt; then
+            python .github/annotate.py error "Analysis tests failed" analysis-output.txt
+            exit 1
+          fi
