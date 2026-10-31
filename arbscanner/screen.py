@@ -39,6 +39,11 @@ DEFAULT_MARGIN = Decimal("0.02")
 SIDE_AGREEMENT = 0.95
 MIN_SIDE_VOTES = 5
 
+# Markets close all the time (a match ends, a daily market resolves): their tokens drop
+# out of the price answers until the hourly rebuild. A large share missing means
+# something else is wrong.
+MAX_MISSING_SHARE = 0.2
+
 
 @dataclass(frozen=True)
 class SideMapping:
@@ -138,8 +143,11 @@ def build_price_table(raw: Dict[str, Any], requested: List[str], rejected: int =
         "no_ask": sum(1 for t in tops.values() if t.ask is None),
         "no_bid": sum(1 for t in tops.values() if t.bid is None),
     }
-    # A few odd tokens are normal (a market closing right now); many means the API changed.
-    if len(uncertain) > max(25, 0.02 * n):
+    # Tokens left out of the answer are normal: the API omits markets that closed since
+    # the list was built (checked live). Odd answers are not: a few are tolerated, many
+    # mean the API changed. Either way, too many and we stop instead of guessing.
+    odd = malformed + crossed
+    if odd > max(25, 0.02 * n) or missing > max(25, MAX_MISSING_SHARE * n):
         raise SchemaError(
             f"POST /prices: {len(uncertain)}/{len(requested)} tokens without usable prices "
             f"(missing {missing}, malformed {malformed}, crossed {crossed}) — refusing to screen"

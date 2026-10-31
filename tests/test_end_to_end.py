@@ -73,6 +73,7 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(summary["prices_priced"], 14)
         self.assertEqual(summary["prices_rejected"], 1)
         self.assertEqual(summary["prices_uncertain"], 1)
+        self.assertEqual((summary["prices_missing"], summary["prices_odd"]), (1, 0))
         self.assertEqual(summary["side_mapping"], "BUY=ask")
         self.assertEqual(summary["side_votes"], "14/14")
         self.assertEqual(summary["screened_events"], 6)

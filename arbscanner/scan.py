@@ -37,7 +37,8 @@ SCAN_FIELDS = [
     "universe_refreshed", "universe_note", "universe_events", "universe_markets", "gamma_endpoint",
     "gamma_pages", "gamma_complete", "new_events_seen", "new_events_added",
     # stage 1
-    "prices_tokens", "prices_priced", "prices_uncertain", "prices_rejected", "prices_requests",
+    "prices_tokens", "prices_priced", "prices_uncertain", "prices_missing", "prices_odd",
+    "prices_rejected", "prices_requests",
     "side_mapping", "side_votes", "stage1_s", "screened_events", "candidates_yes", "candidates_no",
     "candidates_uncertain", "candidate_events",
     # stage 2
@@ -397,6 +398,8 @@ def run_scan(
             "prices_tokens": len(yes_tokens),
             "prices_priced": table.stats["priced"],
             "prices_uncertain": len(table.uncertain),
+            "prices_missing": table.stats["missing"],
+            "prices_odd": table.stats["malformed"] + table.stats["crossed"],
             "prices_rejected": pstats["rejected_tokens"],
             "prices_requests": pstats["requests"],
             "side_mapping": table.mapping.label,

@@ -84,12 +84,23 @@ class PriceTableTests(unittest.TestCase):
         self.assertEqual(t.uncertain, {"t3", "t4", "t5", "missing"})
         self.assertEqual((t.stats["malformed"], t.stats["crossed"], t.stats["missing"]), (2, 1, 1))
 
-    def test_too_many_unusable_tokens_is_an_error(self):
+    def test_too_many_odd_answers_is_an_error(self):
         raw = {f"t{i}": {"BUY": "0.30", "SELL": "0.28"} for i in range(1000)}
-        requested = list(raw) + [f"x{i}" for i in range(30)]
+        raw.update({f"x{i}": {"BUY": "oops"} for i in range(30)})
         with self.assertRaises(SchemaError):
-            build_price_table(raw, requested)
-        build_price_table(raw, list(raw) + [f"x{i}" for i in range(20)])   # within tolerance
+            build_price_table(raw, list(raw))
+        for i in range(10):
+            del raw[f"x{i}"]
+        self.assertEqual(len(build_price_table(raw, list(raw)).uncertain), 20)   # within tolerance
+
+    def test_closed_markets_left_out_of_the_answer_are_tolerated(self):
+        raw = {f"t{i}": {"BUY": "0.30", "SELL": "0.28"} for i in range(1000)}
+        closed = [f"closed{i}" for i in range(150)]      # 13% of the list closed since the rebuild
+        t = build_price_table(raw, list(raw) + closed)
+        self.assertEqual(t.stats["missing"], 150)
+        self.assertEqual(t.uncertain, set(closed))
+        with self.assertRaises(SchemaError):             # but not a third of everything
+            build_price_table(raw, list(raw) + [f"c{i}" for i in range(400)])
 
 
 class ScreenEventTests(unittest.TestCase):
