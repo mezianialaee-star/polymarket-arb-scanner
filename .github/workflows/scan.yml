@@ -5,7 +5,8 @@ name: scan
 # in the Actions cache (state/), not in git.
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    # minutes 4, 14, 24, ...: GitHub delays schedules most at the top of the hour
+    - cron: "4-59/10 * * * *"
   workflow_dispatch:
 
 permissions:
