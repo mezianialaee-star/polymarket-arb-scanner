@@ -1,0 +1,61 @@
+name: sig-bot
+
+# Bot for the SIG Predictions Cup (official API; bots are allowed by the Official Rules, section 6).
+# It looks for riskless arbitrage between the party markets of the same race (see sig_bot/sig_bot.py).
+#
+# Needs the repository secret SIG_API_KEY (Settings -> Secrets and variables -> Actions).
+# MODE below: "dry" = reports only, buys nothing. "live" = trades, within the limits below.
+# Stop: Actions -> sig-bot -> "..." -> Disable workflow (or cancel the running job).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "sig_bot/**"
+      - ".github/workflows/sig-bot.yml"
+  schedule:
+    - cron: "*/30 * * * *"   # safety net: starts the bot again if it stopped (one run at a time)
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "How long to run (minutes, at most 340)"
+        default: "340"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sig-bot
+  # A new version of the bot replaces the running one; scheduled runs wait their turn.
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
+jobs:
+  bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - name: Check the date
+        id: gate
+        run: |
+          if [ "$(date -u +%Y%m%d%H%M)" -ge "202611041645" ]; then
+            echo "The competition is over: the bot does not start."
+            echo "active=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "active=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v6
+        if: steps.gate.outputs.active == '1'
+
+      - name: Run the bot
+        if: steps.gate.outputs.active == '1'
+        env:
+          SIG_API_KEY: ${{ secrets.SIG_API_KEY }}
+          MODE: "dry"
+          LIVE_CONFIRM: "no"
+          RUN_MINUTES: ${{ github.event.inputs.minutes || '340' }}
+          MIN_EDGE: "0.01"
+          MAX_TRADE_COST: "3000"
+          MAX_RUN_COST: "10000"
+          CASH_RESERVE: "100"
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 -I sig_bot/sig_bot.py
