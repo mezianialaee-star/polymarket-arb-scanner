@@ -12,6 +12,10 @@ Bot qui passe par l'API officielle du jeu. Le règlement l'autorise (section 6).
 
 **Limites** (dans le workflow) : 3 000 maximum par opération, 10 000 maximum par session, 100 de cash toujours gardés. Le bot s'arrête seul le 4 novembre à 16h45 UTC, avant la fin du jeu.
 
+**Lancer à la main** (sinon, le bot démarre tout seul toutes les 30 minutes) : https://github.com/mezianialaee-star/polymarket-arb-scanner/actions/workflows/sig-bot.yml → Run workflow → Run workflow.
+
+**Suivre** : l'état du bot est enregistré toutes les 10 minutes dans `sig_bot/status/latest.md`.
+
 **Arrêter** : Actions → sig-bot → « ... » → Disable workflow.
 
 Tests hors ligne : `cd sig_bot && python3 -m unittest -v test_sig_bot`
