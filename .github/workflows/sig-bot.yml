@@ -5,12 +5,14 @@ name: sig-bot
 #
 # Needs the repository secret SIG_API_KEY (Settings -> Secrets and variables -> Actions).
 # MODE below: "dry" = reports only, buys nothing. "live" = trades, within the limits below.
+# The bot's status is saved every 10 minutes in sig_bot/status/latest.md.
 # Stop: Actions -> sig-bot -> "..." -> Disable workflow (or cancel the running job).
 on:
   push:
     branches: [main]
     paths:
       - "sig_bot/**"
+      - "!sig_bot/status/**"
       - ".github/workflows/sig-bot.yml"
   schedule:
     - cron: "*/30 * * * *"   # safety net: starts the bot again if it stopped (one run at a time)
@@ -21,7 +23,7 @@ on:
         default: "340"
 
 permissions:
-  contents: read
+  contents: write   # save the status file
 
 concurrency:
   group: sig-bot
@@ -57,5 +59,39 @@ jobs:
           MAX_TRADE_COST: "3000"
           MAX_RUN_COST: "10000"
           CASH_RESERVE: "100"
+          STATUS_PATH: sig_bot/status/latest.md
           PYTHONDONTWRITEBYTECODE: "1"
-        run: python3 -I sig_bot/sig_bot.py
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          publish() {
+            [ -f "$STATUS_PATH" ] || return 0
+            git add "$STATUS_PATH"
+            git diff --cached --quiet && return 0
+            git commit -q -m "sig-bot: status $(date -u +%Y-%m-%dT%H:%MZ)" || return 0
+            for attempt in 1 2 3 4 5; do
+              git push -q origin "HEAD:${GITHUB_REF_NAME}" && return 0
+              git pull -q --rebase --autostash origin "${GITHUB_REF_NAME}" || true
+              sleep $((attempt * 3))
+            done
+            echo "Could not save the status this time."
+          }
+          python3 -I sig_bot/sig_bot.py &
+          bot=$!
+          last=$(date +%s)
+          first=1
+          while kill -0 "$bot" 2>/dev/null; do
+            sleep 20
+            now=$(date +%s)
+            if { [ "$first" = 1 ] && [ $((now - last)) -ge 90 ]; } || [ $((now - last)) -ge 600 ]; then
+              publish
+              last=$now
+              first=0
+            fi
+          done
+          set +e
+          wait "$bot"
+          code=$?
+          set -e
+          publish
+          exit "$code"

@@ -57,6 +57,7 @@ RUN_MINUTES = env_float("RUN_MINUTES", 340)
 STOP_AT_UTC = os.environ.get("STOP_AT_UTC", "2026-11-04T16:45:00Z")  # trading ends 12:00 EST = 17:00 UTC
 MARKETS_REFRESH_S = env_float("MARKETS_REFRESH_S", 900)
 REPORT_EVERY_S = env_float("REPORT_EVERY_S", 600)
+STATUS_PATH = os.environ.get("STATUS_PATH", "").strip()  # optional Markdown status file
 
 # Words that may follow the office in a market title, e.g. "Ohio Senate special election".
 OFFICE_SUFFIXES = r"(?:\s+(?:special|election|seat|race|\(special\)))*"
@@ -85,6 +86,19 @@ def log(message):
 
 def parse_utc(text):
     return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+
+
+def write_status(lines):
+    """Writes the Markdown status file (if STATUS_PATH is set), atomically."""
+    if not STATUS_PATH:
+        return
+    folder = os.path.dirname(STATUS_PATH)
+    if folder:
+        os.makedirs(folder, exist_ok=True)
+    stamp = f"_Updated {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC_"
+    with open(STATUS_PATH + ".tmp", "w", encoding="utf-8") as handle:
+        handle.write("\n".join([lines[0], "", stamp] + lines[1:]) + "\n")
+    os.replace(STATUS_PATH + ".tmp", STATUS_PATH)
 
 
 class ApiError(Exception):
@@ -292,6 +306,9 @@ class Bot:
         self.last_balance = 0.0
         self.closest = []
         self.spreads = []
+        self.market_info = {}
+        self.last_error = ""
+        self.state = "starting"
 
     # --- setup -----------------------------------------------------------------
     def pick_tournament(self):
@@ -333,6 +350,8 @@ class Bot:
         self.groups = groups
         self.last_markets = time.time()
         legs = sum(len(v) for v in groups.values())
+        self.market_info = {"open": len(markets), "races": len(groups), "legs": legs,
+                            "unparsed": unparsed[:10], "skipped": sorted(skipped)[:10]}
         log(f"Markets: {len(markets)} open, {len(groups)} races with 2+ party markets ({legs} markets).")
         if first:
             for race, legs_ in sorted(groups.items())[:60]:
@@ -451,6 +470,7 @@ class Bot:
                 log(f"  prices moved before the order, nothing was bought: {race}")
             else:
                 log(f"  order refused ({error}): {race}")
+                self.last_error = f"order refused for {race}: {error}"
             self.cooldown[race] = time.time() + 300
             return
         self.spent += qty * cost_per_set
@@ -460,6 +480,7 @@ class Bot:
         log(f"[TRADE] bought NO on {len(legs)} markets: {text}")
         log(f"  response: {json.dumps(result)[:400]}")
         self.cooldown[race] = time.time() + 60
+        write_status(self.status_lines())
 
     def report(self):
         self.last_report = time.time()
@@ -475,18 +496,77 @@ class Bot:
             median = spreads[len(spreads) // 2]
             wide = sum(1 for s in spreads if s >= 0.03)
             log(f"  Spreads (best ask - best bid): median {median:.3f}, {wide}/{len(spreads)} markets at 0.03 or more.")
+        write_status(self.status_lines())
+
+    def status_lines(self):
+        t = self.tournament or {}
+        info = self.market_info
+        lines = [f"# SIG bot: {'LIVE' if LIVE else 'DRY RUN (buys nothing)'}", "",
+                 f"- State: {self.state}"]
+        if t:
+            lines.append(f"- Tournament: {t.get('name')} (`{t.get('slug')}`)")
+        lines += [
+            f"- Cash: {self.balance:,.0f}",
+            f"- Spent on arbitrage sets: {self.spent:,.0f}",
+            f"- Guaranteed profit locked in: {self.guaranteed_profit:,.0f}",
+            f"- Settings: MIN_EDGE {MIN_EDGE}, MAX_TRADE_COST {MAX_TRADE_COST:,.0f}, "
+            f"MAX_RUN_COST {MAX_RUN_COST:,.0f}, CASH_RESERVE {CASH_RESERVE:,.0f}",
+            f"- API calls: {self.api.calls[False]} reads, {self.api.calls[True]} writes",
+        ]
+        if self.last_error:
+            lines.append(f"- Last error: {self.last_error}")
+        if info:
+            lines.append(f"- Markets: {info['open']} open, {info['races']} races with 2+ party markets "
+                         f"({info['legs']} markets)")
+            if info.get("unparsed"):
+                lines.append("- Titles not understood (sample): " + " / ".join(map(str, info["unparsed"])))
+            if info.get("skipped"):
+                lines.append("- Left out on purpose: " + ", ".join(info["skipped"]))
+        if self.closest:
+            lines += ["", "## Races closest to an arbitrage", "",
+                      "S = sum of the best YES bids. Above 1 = riskless profit of S - 1 per set.", "",
+                      "| S | Race | Bids |", "|---|---|---|"]
+            for c in self.closest:
+                lines.append(f"| {c['S']:.3f} | {c['race']} | {' + '.join(f'{b:.3f}' for b in c['bids'])} |")
+        if self.spreads:
+            spreads = sorted(self.spreads)
+            lines.append("")
+            lines.append(f"Spreads: median {spreads[len(spreads) // 2]:.3f}, "
+                         f"{sum(1 for s in spreads if s >= 0.03)}/{len(spreads)} markets at 0.03 or more.")
+        if self.dry_seen:
+            lines += ["", "## Riskless arbitrages seen (dry run)", "",
+                      "| Race | Times seen | Best edge/set | Sets | Profit |", "|---|---|---|---|---|"]
+            for race, s in sorted(self.dry_seen.items(), key=lambda kv: -kv[1]["best_profit"]):
+                lines.append(f"| {race} | {s['count']} | {s['best_edge']:.3f} | {s['qty']} | {s['best_profit']:,.0f} |")
+        if self.trades:
+            lines += ["", "## Trades", "", "| Race | Sets | Edge/set | Cost | Guaranteed profit |",
+                      "|---|---|---|---|---|"]
+            for trade in self.trades[-30:]:
+                lines.append(f"| {trade['race']} | {trade['qty']} | {trade['edge']:.3f} | "
+                             f"{trade['cost']:,.0f} | {trade['profit']:,.0f} |")
+        return lines
 
     # --- run -----------------------------------------------------------------------------
     def run(self):
-        account = self.api.call("GET", "/account") or {}
-        log(f"API key OK (account created {str(account.get('createdAt', '?'))[:10]}). "
-            f"Mode: {'LIVE' if LIVE else 'DRY RUN (nothing is bought)'}.")
-        self.tournament = self.pick_tournament()
+        try:
+            account = self.api.call("GET", "/account") or {}
+            log(f"API key OK (account created {str(account.get('createdAt', '?'))[:10]}). "
+                f"Mode: {'LIVE' if LIVE else 'DRY RUN (nothing is bought)'}.")
+            self.tournament = self.pick_tournament()
+        except ApiError as error:
+            self.state = "stopped: the API key was refused"
+            self.last_error = str(error)
+            log(f"API error at start: {error}")
+            log("Check the SIG_API_KEY secret, its scopes (read + trade), and that the e-mail is confirmed.")
+            write_status(self.status_lines())
+            return 1
         self.balance = float(self.tournament.get("myBalance") or 0)
         log(f"Tournament: '{self.tournament.get('name')}' (slug {self.tournament.get('slug')}), "
             f"cash {self.balance:,.2f}.")
         log(f"Settings: MIN_EDGE {MIN_EDGE}, MAX_TRADE_COST {MAX_TRADE_COST:,.0f}, "
             f"MAX_RUN_COST {MAX_RUN_COST:,.0f}, CASH_RESERVE {CASH_RESERVE:,.0f}.")
+        self.state = "running"
+        write_status(self.status_lines())
         deadline = min(time.time() + RUN_MINUTES * 60, parse_utc(STOP_AT_UTC))
         errors = 0
         while time.time() < deadline:
@@ -496,17 +576,23 @@ class Bot:
                 errors = 0
             except ApiError as error:
                 errors += 1
+                self.last_error = str(error)
                 log(f"API error: {error}")
                 if error.status in (401, 403):
                     log("The key is refused (check the SIG_API_KEY secret and its scopes: read + trade).")
+                    self.state = "stopped: the API key was refused"
                     break
                 if errors >= 10:
                     log("Too many errors in a row, stopping.")
+                    self.state = "stopped: too many errors in a row"
                     break
                 time.sleep(30)
             time.sleep(max(1.0, POLL_SECONDS - (time.time() - started)))
+        if self.state == "running":
+            self.state = "session finished (the next one starts automatically)"
         self.report()
         self.summary()
+        return 0
 
     def summary(self):
         lines = [f"## SIG bot run ({'LIVE' if LIVE else 'dry run'})", ""]
@@ -536,11 +622,12 @@ class Bot:
 def main():
     if not API_KEY:
         print("SIG_API_KEY is missing: add it as a repository secret named SIG_API_KEY.", flush=True)
+        write_status(["# SIG bot: waiting for its API key", "",
+                      "- State: the repository secret SIG_API_KEY is missing, so the bot did not start."])
         return 2
     if MODE == "live" and not LIVE:
         log("MODE=live without LIVE_CONFIRM=yes: running as a dry run.")
-    Bot(Api(BASE_URL, API_KEY)).run()
-    return 0
+    return Bot(Api(BASE_URL, API_KEY)).run()
 
 
 if __name__ == "__main__":
