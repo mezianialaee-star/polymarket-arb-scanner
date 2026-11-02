@@ -181,6 +181,18 @@ class BotPassTests(unittest.TestCase):
         finally:
             sig_bot.LIVE = False
 
+    def test_no_cash_means_no_order_book_reads(self):
+        sig_bot.LIVE = True
+        try:
+            api = FakeApi(balance=100)   # everything above the reserve is already used
+            bot = self.make_bot(api)
+            bot.state = "running"
+            bot.step()
+            self.assertEqual(api.posted, [])
+            self.assertTrue(bot.state.startswith("running, waiting for free cash"))
+        finally:
+            sig_bot.LIVE = False
+
     def test_logs_never_print_identity(self):
         import contextlib
         import io

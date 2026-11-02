@@ -424,6 +424,13 @@ class Bot:
             for q in quotes.values()
             if q.get("bestAsk") is not None and q.get("bestBid") is not None
         ]
+        budget = min(MAX_TRADE_COST, MAX_RUN_COST - self.spent, self.balance - CASH_RESERVE)
+        if LIVE and budget < MIN_QTY:
+            # No cash to use: skip the order-book reads until the balance changes.
+            candidates = []
+            self.state = "running, waiting for free cash (all cash above the reserve is used)"
+        elif self.state.startswith("running"):
+            self.state = "running"
         for candidate in candidates:
             if candidate["edge"] < MIN_EDGE:
                 continue
