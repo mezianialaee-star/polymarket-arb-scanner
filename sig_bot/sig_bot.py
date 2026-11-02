@@ -250,8 +250,11 @@ def candidates_from_quotes(groups, quotes):
         if bids is None:
             continue
         total = sum(bids)
-        out.append({"race": race, "legs": legs, "bids": bids, "S": total, "edge": total - 1})
-    out.sort(key=lambda c: c["edge"], reverse=True)
+        cost = len(bids) - total  # cost of one set of NO shares
+        ret = (total - 1) / cost if cost > 0 else 0.0
+        out.append({"race": race, "legs": legs, "bids": bids, "S": total, "edge": total - 1, "return": ret})
+    # Best return on the cash spent first (cash is the limit, not the number of sets).
+    out.sort(key=lambda c: c["return"], reverse=True)
     return out
 
 
@@ -423,7 +426,7 @@ class Bot:
         ]
         for candidate in candidates:
             if candidate["edge"] < MIN_EDGE:
-                break
+                continue
             if self.cooldown.get(candidate["race"], 0) > now:
                 continue
             self.try_arbitrage(candidate)

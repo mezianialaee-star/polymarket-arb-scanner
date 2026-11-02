@@ -52,8 +52,8 @@ jobs:
         if: steps.gate.outputs.active == '1'
         env:
           SIG_API_KEY: ${{ secrets.SIG_API_KEY }}
-          MODE: "dry"
-          LIVE_CONFIRM: "no"
+          MODE: "live"          # switched on 2 Nov 2026 at the owner's request
+          LIVE_CONFIRM: "yes"
           RUN_MINUTES: ${{ github.event.inputs.minutes || '340' }}
           MIN_EDGE: "0.01"
           MAX_TRADE_COST: "3000"

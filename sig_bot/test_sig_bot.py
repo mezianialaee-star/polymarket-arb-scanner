@@ -113,6 +113,17 @@ class MathsTests(unittest.TestCase):
         qty, _, _ = sig_bot.size_trade([(0.885, 400), (0.14, 1000)], -5)
         self.assertEqual(qty, 0)
 
+    def test_ranking_by_return_on_cash(self):
+        groups = {
+            "three legs": [{"exchangeId": "a"}, {"exchangeId": "b"}, {"exchangeId": "c"}],
+            "two legs": [{"exchangeId": "d"}, {"exchangeId": "e"}],
+        }
+        quotes = {"a": {"bestBid": 0.93}, "b": {"bestBid": 0.025}, "c": {"bestBid": 0.12},   # +0.075 for 1.925
+                  "d": {"bestBid": 0.92}, "e": {"bestBid": 0.145}}                           # +0.065 for 0.935
+        ranked = sig_bot.candidates_from_quotes(groups, quotes)
+        self.assertEqual([c["race"] for c in ranked], ["two legs", "three legs"])
+        self.assertAlmostEqual(ranked[0]["return"], 0.065 / 0.935)
+
     def test_payload(self):
         legs = [{"exchangeId": "11"}, {"exchangeId": "12"}]
         body = sig_bot.multi_leg_body("t-cup", legs, [0.885, 0.14], 400)
