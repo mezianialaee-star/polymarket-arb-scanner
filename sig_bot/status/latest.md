@@ -1,6 +1,6 @@
 # SIG bot: LIVE
 
-_Updated 2026-11-03 14:17 UTC_
+_Updated 2026-11-03 14:28 UTC_
 
 - State: running, waiting for free cash (all cash above the reserve is used)
 - Tournament: Midterm Elections (`midterm-elections`)
@@ -8,7 +8,7 @@ _Updated 2026-11-03 14:17 UTC_
 - Spent on arbitrage sets: 0
 - Guaranteed profit locked in: 0
 - Settings: MIN_EDGE 0.01, MAX_TRADE_COST 3,000, MAX_RUN_COST 10,000, CASH_RESERVE 100
-- API calls: 1023 reads, 0 writes
+- API calls: 1151 reads, 0 writes
 - Markets: 237 open, 117 races with 2+ party markets (237 markets)
 
 ## Races closest to an arbitrage
@@ -26,4 +26,4 @@ S = sum of the best YES bids. Above 1 = riskless profit of S - 1 per set.
 | 1.015 | pa-01 house race | 0.650 + 0.365 |
 | 1.015 | mt-01 house race | 0.560 + 0.455 |
 
-Spreads: median 0.010, 1/237 markets at 0.03 or more.
+Spreads: median 0.010, 2/237 markets at 0.03 or more.
