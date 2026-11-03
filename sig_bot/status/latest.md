@@ -1,6 +1,6 @@
 # SIG bot: LIVE
 
-_Updated 2026-11-03 23:12 UTC_
+_Updated 2026-11-03 23:23 UTC_
 
 - State: running, waiting for free cash (all cash above the reserve is used)
 - Tournament: Midterm Elections (`midterm-elections`)
@@ -8,7 +8,7 @@ _Updated 2026-11-03 23:12 UTC_
 - Spent on arbitrage sets: 0
 - Guaranteed profit locked in: 0
 - Settings: MIN_EDGE 0.01, MAX_TRADE_COST 3,000, MAX_RUN_COST 10,000, CASH_RESERVE 100
-- API calls: 2419 reads, 0 writes
+- API calls: 2547 reads, 0 writes
 - Markets: 237 open, 117 races with 2+ party markets (237 markets)
 
 ## Races closest to an arbitrage
@@ -17,13 +17,13 @@ S = sum of the best YES bids. Above 1 = riskless profit of S - 1 per set.
 
 | S | Race | Bids |
 |---|---|---|
-| 1.020 | iowa governor | 0.885 + 0.135 |
-| 1.020 | georgia governor | 0.685 + 0.335 |
-| 1.015 | alaska senate | 0.675 + 0.340 |
-| 1.015 | mi-07 house race | 0.810 + 0.205 |
-| 1.010 | tennessee senate | 0.060 + 0.950 |
-| 1.010 | texas senate | 0.725 + 0.285 |
-| 1.020 | nebraska senate | 0.025 + 0.295 + 0.700 |
-| 1.010 | sc-01 house race | 0.505 + 0.505 |
+| 1.015 | alaska senate | 0.680 + 0.335 |
+| 1.015 | michigan senate | 0.805 + 0.210 |
+| 1.015 | iowa governor | 0.885 + 0.130 |
+| 1.015 | mi-07 house race | 0.815 + 0.200 |
+| 1.015 | new mexico senate | 0.980 + 0.035 |
+| 1.015 | pa-07 house race | 0.950 + 0.065 |
+| 1.010 | mn-02 house race | 0.940 + 0.070 |
+| 1.010 | mn-01 house race | 0.435 + 0.575 |
 
-Spreads: median 0.025, 96/234 markets at 0.03 or more.
+Spreads: median 0.025, 95/234 markets at 0.03 or more.
