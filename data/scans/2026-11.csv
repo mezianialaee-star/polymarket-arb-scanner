@@ -1132,3 +1132,8 @@ scan_time,status,duration_s,universe_generated_at,universe_age_min,universe_refr
 <!--[if IE 7]>    <html class=""no-js ie7 oldie"" lang=""en-US""> <![endif]-->
 <!--[if IE 8]>    <html class=""no-js ie8 oldie"" lang=""en-US""> <![endif]-->
 <!--["
+2026-11-08T15:08:48Z,blocked,3.8,2026-11-08T14:18:08Z,50.7,0,,4688,51046,keyset,197,1,274,4,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,10,"HTTP 403 for POST https://clob.polymarket.com/prices: <!DOCTYPE html>
+<!--[if lt IE 7]> <html class=""no-js ie6 oldie"" lang=""en-US""> <![endif]-->
+<!--[if IE 7]>    <html class=""no-js ie7 oldie"" lang=""en-US""> <![endif]-->
+<!--[if IE 8]>    <html class=""no-js ie8 oldie"" lang=""en-US""> <![endif]-->
+<!--["
